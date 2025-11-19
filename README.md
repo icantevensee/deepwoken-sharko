@@ -23,10 +23,11 @@
 
 
 2. **No Python Installation?**: If you don't have Python installed, you can download the repository as a ZIP file:
-    - [Download ZIP](https://github.com/pinkiwinter/sharko-pet/blob/main/sharko.zip)
+    - [Download ZIP](https://github.com/icantevensee/deepwoken-sharko/blob/main/Sharko.zip)
 
 
 <img src="/img/2.png" width="400">
+
 
 
 
