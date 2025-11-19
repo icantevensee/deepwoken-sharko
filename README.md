@@ -4,7 +4,7 @@
 <img src="/img/1.png" width="300">
 
 ### Features:
-- **Movement**: You can move Destroyman III around the screen by clicking and holding the mouse wheel (middle button) while dragging.
+- **Movement**: You can move the Sharko around the screen by clicking and holding the mouse wheel (middle button) while dragging.
 - **Menu Access**: To open the menu, double-click the mouse wheel (middle button).
 - **Animation**: The Sharko can animate through different states such as idle, walking, talking, and greeting.
 - **Interaction**: Users can interact with the Sharko by clicking on the GUI interface.
@@ -21,8 +21,9 @@
     - Run the main Python script to launch the Sharko application.
     - Interact with the Sharko by clicking on the interface and observing its various animations and sounds.
 
-2. **No Python Installation?**: If you don't have Python installed, you can download the repository as a ZIP file. File is on google drive due to gitub not supporting files larger than 100 mb. Large file size is due to the absurd amount of space the python libraries take up:
-    - [Download ZIP](https://drive.google.com/file/d/1SLRn4HzRINQUD0yVrg7ZTtOkbbnyG2mu/view?usp=sharing)
+
+2. **No Python Installation?**: If you don't have Python installed, you can download the repository as a ZIP file:
+    - [Download ZIP](https://github.com/pinkiwinter/sharko-pet/blob/main/sharko.zip)
 
 
 <img src="/img/2.png" width="400">
