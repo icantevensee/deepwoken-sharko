@@ -21,8 +21,8 @@
     - Run the main Python script to launch the Sharko application.
     - Interact with the Sharko by clicking on the interface and observing its various animations and sounds.
 
-2. **No Python Installation?**: If you don't have Python installed, you can download the repository as a ZIP file:
-    - [Download ZIP](https://github.com/pinkiwinter/sharko-pet/blob/main/sharko.zip)
+2. **No Python Installation?**: If you don't have Python installed, you can download the repository as a ZIP file. File is on google drive due to gitub not supporting files larger than 100 mb. Large file size is due to the absurd amount of space the python libraries take up:
+    - [Download ZIP](https://drive.google.com/file/d/1SLRn4HzRINQUD0yVrg7ZTtOkbbnyG2mu/view?usp=sharing)
 
 
 <img src="/img/2.png" width="400">
