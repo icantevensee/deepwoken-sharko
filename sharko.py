@@ -17,7 +17,7 @@ class Sharko:
     WINDOW_SIZE = "357x342"
     ANIMATION_DELAY = 500
     TALKING_ANIMATION_DELAY = 10000
-    IDLE_ANIMATION_DELAY = 25000
+    IDLE_ANIMATION_DELAY = 2500
     GREETING_ANIMATION_DELAY = 8000
     REMOVAL_ANIMATION_DELAY = 5000
     INACTIVE_TIME_REQUIREMENT = 60
@@ -32,24 +32,51 @@ class Sharko:
     START_TALKING_SOUND = "assets/sounds/start_talking.mp3"
     CLASH_SOUND = "assets/sounds/Clash.mp3"
     GREETING_SOUND = "assets/sounds/greeting.mp3"
+    ANSWER_SOUND = "assets/sounds/answer_question.mp3"
+
     FONT = r"TheFont.ttf"
 
 
     def __init__(self, image_path, talking_path, greeting_path, removal_path):
-        file = open('Lines.txt', 'r')
-        self.Lines = file.readlines()
-        clean_lines = [line.strip() for line in self.Lines]
-        self.Lines = clean_lines
-        file.close()
-        file = open('RemovalLines+IntroLine.txt', 'r')
+        self._idle_after_id = None
+        try:
+            file = open('Lines.txt', 'r', encoding='utf-8')
+            self.Lines = file.readlines()
+            clean_lines = [self._decode_escapes(line.strip()) for line in self.Lines]
+            self.Lines = clean_lines
+        except Exception:
+            try:
+                file = open('Lines.txt', 'r')
+                self.Lines = [line.strip() for line in file.readlines()]
+            except Exception:
+                self.Lines = []
+        finally:
+            try:
+                file.close()
+            except Exception:
+                pass
+        file = open('RemovalLines+IntroLine.txt', 'r', encoding='utf-8')
         removalandintrolines = file.readlines()
         self.RemovalLines = []
 
         for index, line in enumerate(removalandintrolines):
+            decoded = self._decode_escapes(line.strip())
             if index > 2:
-                self.RemovalLines.append(line.strip())
+                self.RemovalLines.append(decoded)
             elif index == 1:
-                self.IntroLine = line.strip()
+                self.IntroLine = decoded
+        file.close()
+
+        file = open('Questions.txt', 'r', encoding='utf-8')
+        removalandintrolines = file.readlines()
+        self.Questions = []
+        for index, line in enumerate(removalandintrolines):
+            decoded = self._decode_escapes(line.strip())
+            Current_Question = math.floor(index/5)
+            Current_Line  = index - Current_Question*5
+            if Current_Line == 0:
+                self.Questions.append([])
+            self.Questions[Current_Question].append(decoded)
         file.close()
 
         self.Quiet = False
@@ -72,13 +99,14 @@ class Sharko:
         self.create_gui()
         self.animate()
         self.sounds(self.sound_file)
-        self.add_talking_sentences(self.IntroLine.strip(),'greeting')
+        self.add_talking_sentences(self.IntroLine.strip(),'greeting',False)
         self.window.after(self.GREETING_ANIMATION_DELAY, self.idle_state)
         #self.window.after(self.GREETING_ANIMATION_DELAY + self.IDLE_ANIMATION_DELAY + self.TALKING_ANIMATION_DELAY, self.idle_state)
-        self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND]
+        self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND, self.ANSWER_SOUND]
         self.sounds_group = [pygame.mixer.Sound(path) for path in self.sound_paths]
         self.Walking = False
         self.Walkspeed = 230 #Pixels per second
+        self.walking_enabled = True
 
         screen_width = windll.user32.GetSystemMetrics(0)
         screen_height = windll.user32.GetSystemMetrics(1)
@@ -106,6 +134,23 @@ class Sharko:
         mouse_listener.start()
 
         self.window.mainloop()
+
+    def _decode_escapes(self, s):
+
+        if not isinstance(s, str):
+            return s
+        if ('\\u' in s) or ('\\x' in s) or ('\\U' in s) or ('&#' in s) or ('&' in s):
+            try:
+                decoded = s.encode('utf-8').decode('unicode_escape')
+            except Exception:
+                decoded = s
+            try:
+                import html
+                decoded = html.unescape(decoded)
+            except Exception:
+                pass
+            return decoded
+        return s
    
     
 
@@ -137,6 +182,8 @@ class Sharko:
 
         self.states = {
             'idle': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png')),
+                     tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle2.png'))],
+            'Limbo': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png')),
                      tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle2.png'))],
             'walking': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'walk1.png')),
                         tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'walk2.png'))],
@@ -206,6 +253,8 @@ class Sharko:
         self.Movie_menu.add_command(label='On(No glasses)', command=self.MovieOn1)
         self.menu.add_cascade(label='Movie mode', menu=self.Movie_menu)
         self.menu.add_command(label='Sounds (Off/On)', command=self.sounds_logics)
+        self.menu.add_command(label='Walking (Off/On)', command=self.toggle_walking)
+        self.menu.add_command(label='Flip side', command=self.flip_side)
         self.menu.add_command(label='Close', command=self.close_command)
 
         self.window.overrideredirect(True)
@@ -231,7 +280,14 @@ class Sharko:
 
         if self.CutsceneIsPlaying == True:
             return
-        state_images = self.states[self.current_state]
+        state_images = self.states.get(self.current_state, [])
+        if not state_images:
+            state_images = self.states.get('idle', [])
+            if not state_images:
+                self.window.after(self.ANIMATION_DELAY, self.animate)
+                return
+            self.current_state = 'idle'
+
         self.frame = (self.frame + 1) % len(state_images)
         self.label.configure(image=state_images[self.frame])
         self.label.image = state_images[self.frame]
@@ -308,7 +364,6 @@ class Sharko:
 
 
     def clear_talking(self,state):
-        # remove any talking state frames and any overlay label we created
         self.states[state] = []
         if hasattr(self, 'talk_overlay') and self.talk_overlay is not None:
             try:
@@ -316,12 +371,58 @@ class Sharko:
             except Exception:
                 pass
             self.talk_overlay = None
+        if getattr(self, 'question_active', False):
+            self.question_active = False
+            self._question_answers = None
+            try:
+                self.label.unbind("<Button-1>")
+            except Exception:
+                pass
 
 
     def move1(self, event):
         self.y = event.y
         self.x = event.x
         self.Beingmoved = True
+
+    def _handle_question_click(self, event):
+        if not getattr(self, 'question_active', False):
+            return
+        x_off = 97 if self.CurrentDirection == "Left" else 9
+        x = event.x
+        y = event.y
+        if x >= x_off and x <= x_off + 255 and y >= 96 and y <= 126:
+            answer_text = self._question_answers[0] if self._question_answers else None
+            if answer_text:
+                sound_file = self.ANSWER_SOUND
+                self.sounds(sound_file)
+                self._display_answer(answer_text)
+        elif x >= x_off and x <= x_off + 255 and y >= 126 and y <= 163:
+            answer_text = self._question_answers[1] if self._question_answers else None
+            if answer_text:
+                sound_file = self.ANSWER_SOUND
+                self.sounds(sound_file)
+                self._display_answer(answer_text)
+
+    def _display_answer(self, answer_text):
+        self.question_active = False
+        self._question_answers = None
+        try:
+            self.label.unbind("<Button-1>")
+        except Exception:
+            pass
+        try:
+            if getattr(self, '_idle_after_id', None) is not None:
+                self.window.after_cancel(self._idle_after_id)
+        except Exception:
+            pass
+        self.add_talking_sentences(answer_text, 'talking', False)
+        self.new_state('talking')
+        try:
+            self._idle_after_id = self.window.after(self.TALKING_ANIMATION_DELAY, self.idle_state)
+        except Exception:
+            self._idle_after_id = None
+
 
     def release(self, event):
         self.y = event.y
@@ -349,6 +450,46 @@ class Sharko:
         self.Moviemode = True
         self.new_state('MovieNG')
 
+    def toggle_walking(self):
+        """Toggle automatic walking on/off from the middle-click menu."""
+        self.walking_enabled = not self.walking_enabled
+        if not self.walking_enabled and self.current_state == 'walking':
+            self.Beingmoved = True
+            try:
+                self.window.after(50, self._stop_walk_cleanup)
+            except Exception:
+                self._stop_walk_cleanup()
+
+    def _stop_walk_cleanup(self):
+        self.Beingmoved = False
+        if self.current_state == 'walking':
+            self.new_state('idle')
+
+    def flip_side(self):
+        try:
+            if self.CurrentDirection == 'Right':
+                self.rotate_right()
+                try:
+                    y = self.window.geometry().split('+')[-1]
+                except Exception:
+                    y = self.window.winfo_y()
+                self.window.geometry(f'+{0}+{y}')
+                self.x = 0
+            else:
+                self.rotate_left()
+                right_x = max(0, self.Screen_x - int(self.WINDOW_SIZE.split('x')[0]))
+                try:
+                    y = self.window.geometry().split('+')[-1]
+                except Exception:
+                    y = self.window.winfo_y()
+                self.window.geometry(f'+{right_x}+{y}')
+                self.x = right_x
+            self.window.lift()
+            self.geomreminder = True
+        except Exception:
+            pass
+
+
 
     def on_press(self):
         self.last_input_time = time.time()
@@ -361,15 +502,32 @@ class Sharko:
 
     def talking_state(self):
         if self.current_state == 'idle':
-            self.add_talking_sentences(random.choice(self.Lines).strip(),'talking')
-            self.new_state('talking')
+            
+            Line = random.choice(self.Lines + self.Questions)
+
+            if isinstance(Line, str):
+                self.add_talking_sentences(Line.strip(),'talking',False)
+                self.new_state('talking')
+            else:
+                self.add_new_question(Line)
+                self.new_state('talking')
+
             sound_file = self.START_TALKING_SOUND
             self.sounds(sound_file)
-        self.window.after(self.TALKING_ANIMATION_DELAY, self.idle_state)
+        try:
+            if getattr(self, '_idle_after_id', None) is not None:
+                self.window.after_cancel(self._idle_after_id)
+        except Exception:
+            pass
+        self._idle_after_id = self.window.after(self.TALKING_ANIMATION_DELAY, self.idle_state)
 
     
     def idle_state(self):
-        if self.current_state == 'talking' or self.current_state == 'cutscene' and self.CutsceneIsPlaying == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.Moviemode == False or self.current_state == 'MovieNG' and self.Moviemode == False:
+        try:
+            self._idle_after_id = None
+        except Exception:
+            pass
+        if self.current_state == 'talking' or self.current_state == 'cutscene' and self.CutsceneIsPlaying == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.Moviemode == False or self.current_state == 'MovieNG' and self.Moviemode == False or self.current_state == 'Limbo':
             if not self.current_state == 'walking' and not self.current_state == 'cutscene':
                 sound_file = self.END_TALKING_SOUND
                 self.sounds(sound_file)
@@ -380,16 +538,22 @@ class Sharko:
                 self.play_cutscene('InactiveCutscene')
             else:
                 random_integer = random.randint(1, 20)
-                if random_integer > 3 and self.Quiet == False or self.Beingmoved == True :
+                if random_integer > 3 and self.Quiet == False or self.Beingmoved == True or self.walking_enabled == False and self.Quiet == False:
                     self.window.after(self.IDLE_ANIMATION_DELAY, self.talking_state)
                 else:
-                    self.window.after(self.IDLE_ANIMATION_DELAY, self.walking_state)
+                    if self.walking_enabled == False and self.Quiet == True:
+                        self.current_state = 'Limbo'
+                        self.window.after(self.IDLE_ANIMATION_DELAY, self.idle_state)
+                    else:
+                        self.window.after(self.IDLE_ANIMATION_DELAY, self.walking_state)
 
     def walking_state(self):
-         if self.current_state == 'idle':
+        if self.current_state == 'idle':
             self.new_state('walking')
 
-            state_images = self.states[self.current_state]
+            state_images = self.states.get(self.current_state, [])
+            if not state_images:
+                return
             self.frame = (self.frame + 1) % len(state_images)
             self.label.configure(image=state_images[self.frame])
             self.label.image = state_images[self.frame]
@@ -398,16 +562,20 @@ class Sharko:
             else:
                 self.move_window_x(self.window, self.Screen_x-179)
 
+    def add_new_question(self,Question_Lines):
+        self.add_talking_sentences(Question_Lines,'talking',3)
 
 
-    def add_talking_sentences(self,sentence,state):
+
+
+    def add_talking_sentences(self,sentence,state,IsQuestion):
 
 
         if not hasattr(self, 'Lines') or not self.Lines:
             return
 
 
-
+        
         box_w, box_h = 255, 140
 
         def render_text_image(text, size):
@@ -415,22 +583,12 @@ class Sharko:
             draw = ImageDraw.Draw(img)
 
             base_font_path = self.FONT
-            """try:
-                if isinstance(self.FONT, str) and os.path.isfile(self.FONT):
-                    base_font_path = self.FONT
-                elif os.path.exists(r"C:\Windows\Fonts\"):
-                    base_font_path = r"C:\Windows\Fonts\arial.ttf"
-            except Exception:
-                base_font_path = None"""
-
 
             padding = 0
             line_spacing = 8 
 
-
             for font_size in range(72, 7, -1):
                 font = ImageFont.truetype(base_font_path, font_size)
-
 
                 words = text.split()
                 lines = []
@@ -462,7 +620,6 @@ class Sharko:
                 if too_wide:
                     continue
 
-
                 try:
                     ascent, descent = font.getmetrics()
                     single_line_h = ascent + descent
@@ -486,6 +643,74 @@ class Sharko:
             draw.text((0, 0), text, font=ImageFont.load_default(), fill=(0,0,0,255))
             return img
 
+        if IsQuestion == 3:
+            try:
+                question_text = sentence[0]
+                option1_text = sentence[1]
+                option2_text = sentence[2]
+                answer1_text = sentence[3]
+                answer2_text = sentence[4]
+            except Exception:
+                return
+
+            q_img = render_text_image(question_text, (255, 80))
+            opt1_img = render_text_image(option1_text, (255, 30))
+            opt2_img = render_text_image(option2_text, (255, 30))
+
+            try:
+                base1_path = os.path.join(self.IMAGES_PATH, 'talking1.png')
+                base2_path = os.path.join(self.IMAGES_PATH, 'talking2.png')
+                base1 = Image.open(base1_path).convert('RGBA')
+                base2 = Image.open(base2_path).convert('RGBA')
+            except Exception:
+                try:
+                    combined = Image.new('RGBA', (255, 140), (0, 0, 0, 0))
+                    combined.paste(q_img, (0, 9), q_img)
+                    combined.paste(opt1_img, (0, 96), opt1_img)
+                    combined.paste(opt2_img, (0, 126), opt2_img)
+                    tk_img = ImageTk.PhotoImage(combined)
+                    self.states[state] = [tk_img, tk_img]
+                    self._question_answers = (answer1_text, answer2_text)
+                    self.question_active = True
+                    try:
+                        self.label.bind("<Button-1>", self._handle_question_click)
+                    except Exception:
+                        pass
+                except Exception:
+                    return
+                return
+
+            def composite_three(base_img):
+                b = base_img.copy()
+                if self.CurrentDirection == "Left":
+                    x = 97
+                else:
+                    x = 9
+                b.paste(q_img, (x, 9), q_img)
+                b.paste(opt1_img, (x, 96), opt1_img)
+                b.paste(opt2_img, (x, 126), opt2_img)
+                return b
+
+            comp1 = composite_three(base1)
+            comp2 = composite_three(base2)
+
+            try:
+                tk_img1 = ImageTk.PhotoImage(comp1)
+                tk_img2 = ImageTk.PhotoImage(comp2)
+            except Exception:
+                return
+
+            self.states[state] = [tk_img1, tk_img2]
+            self._question_answers = (answer1_text, answer2_text)
+            self.question_active = True
+            try:
+                self.label.bind("<Button-1>", self._handle_question_click)
+            except Exception:
+                pass
+            return
+
+        
+
         text_img = render_text_image(sentence, (box_w, box_h))
         try:
             base1_path = os.path.join(self.IMAGES_PATH, 'talking1.png')
@@ -508,6 +733,10 @@ class Sharko:
             else:
                 x = 9
             y = 9
+            if IsQuestion == 1:
+                y = 96
+            elif IsQuestion == 2:
+                y = 126
             b.paste(text_img, (x, y), text_img)
             return b
 
@@ -524,7 +753,7 @@ class Sharko:
 
     
     def add_removal_sentences(self):
-        self.add_talking_sentences(random.choice(self.RemovalLines).strip(),'removal')
+        self.add_talking_sentences(random.choice(self.RemovalLines).strip(),'removal',False)
 
 
     def close_command(self):
@@ -557,6 +786,11 @@ class Sharko:
         self.CurrentDirection = "Left"
         self.x = 0
         self.geomreminder = True
+        # ensure main behavior loop resumes after rotating
+        try:
+            self.new_state('Limbo')
+        except Exception:
+            pass
         
 
     def rotate_left(self):
@@ -569,6 +803,11 @@ class Sharko:
         self.x = self.Screen_x-359
 
         self.geomreminder = True
+        # ensure main behavior loop resumes after rotating
+        try:
+            self.new_state('Limbo')
+        except Exception:
+            pass
 
 
 
