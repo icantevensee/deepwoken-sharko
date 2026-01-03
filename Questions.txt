@@ -21,8 +21,8 @@ HINT: You’re already too late.
 You hear footsteps behind you. What do you do?
 Turn around.
 Run.
-Mistake.
 Mistake, but faster.
+Mistake.
 Do you want me to tell you the truth?
 Yes.
 No.
@@ -55,6 +55,36 @@ Our operative will be with you shortly!
 Have fun with your 100% free depression!
 Destroyman III asks you to borrow some money. Do you:
 A: Give him the money.
-B: Not hive him money.
+B: Not give him money.
 You're the best! I always knew you loved me :3
 You made the wrong choice... You're a mean selfish little pomar!
+What are your thoughts on the Lord Regent?
+He's great.
+He's evil.
+Lord regent is amazing. #LordRegentXDukeErisa
+You should watch your back, something might happen to you if you keep talking like that.
+Are you having fun right now?
+Yes!
+No.
+I advise you to rethink your answer.
+Things are as they should be.
+Do I give good advice?
+Yes.
+No.
+I am King Alpha Sharko's top advisor. Why shouldn't I be.
+You dare question King Alpha Sharko's top advisor? Guards!
+When was the last time you touched grass?
+I've never touched grass.
+I've never touched grass.
+Correct!
+Correct!
+Which is better: waffles or pancakes?
+Waffles
+Pancakes
+Waffleicious! Yum!
+I see how it is... You shall not be spared when the day of breakfast judgement comes.
+Do you want to buy my new Destroyman III NFT?(doubles your money)
+Yes!
+No.
+Haha, get scammed kid. I am the ultimate scammer, you cannot defeat me.
+I- I- I can't believe you- you could do this to me.

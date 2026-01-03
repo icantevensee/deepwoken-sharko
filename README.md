@@ -1,5 +1,5 @@
 
-## Sharko V2.1
+## Sharko V2.2
 
 <img src="/img/1.png" width="300">
 
@@ -12,14 +12,15 @@
 - **Customization**: The Sharko's appearance and behavior can be customized by modifying image files, and by adding new lines in the Lines and RemovalLines+IntroLine text files. Keep in mind that lines are randomized, and new lines will not necessarily instantly appear. Also, if you edit the lines while the sharko is active, the sharko will not percieve the new lines until you reopen it.
 - **Run on startup**: If you would like the sharko to run every time you turn on your computer, you must first you must create a shortcut to the sharko exectuable file, then copy that shortcut and put it in C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp
 
-### What's new in V2.1
-- New interactive questions.
-- Adding back the feature to change the sharko's orientation from V1
-- Extra options for movie mode allowing anchoring the sharko in place without disabling the dialouge
+### What's new in V2.2
+- New death animation
+- The sharko is smaller now as a result of the death animation meshing two different libraries that are not compatible and me having to do some serious workarounds. The 1 millisecond flicker is also a result of this, I can not fix it. Don't ask me to fix anything, if you want it fixed, you have to rewrite it and email it to me. Grab the previous version if you don't like it the way it is.
+- More questions and one new line
 
-### Future updates for V2.2:
+### Future updates for V2.3:
 - A option to make the sharko dance
 - Settings file
+- Don't expect any new big updates for a while, going to start work on another project, and my break ended + pinkwinter doesn't even know how the code works anymore so don't expect him to update it.
 
 <img src="/img/5.gif" width="400">
 

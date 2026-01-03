@@ -1,25 +1,34 @@
 from ctypes import windll, wintypes, byref
+import ctypes
 import tkinter as tk
 import random
 import os
 import pygame
-import random
 import math
 import time
 from pynput import keyboard, mouse
 from PIL import Image, ImageDraw, ImageFont, ImageTk
+import sys
+from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtGui import QPixmap, QPainter, QImage
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QPixmap
 
-
-
-
+import ctypes
+# Make Tkinter aware of Windows DPI scaling
+try:
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+except Exception:
+    pass
 
 class Sharko:
+    FADE_STEP = 1
     WINDOW_SIZE = "357x342"
     ANIMATION_DELAY = 500
     TALKING_ANIMATION_DELAY = 10000
     IDLE_ANIMATION_DELAY = 20000
     GREETING_ANIMATION_DELAY = 8000
-    REMOVAL_ANIMATION_DELAY = 5000
+    REMOVAL_ANIMATION_DELAY = 3000
     INACTIVE_TIME_REQUIREMENT = 60
 
     
@@ -86,6 +95,7 @@ class Sharko:
         self.Beingmoved = False
         self.geomreminder = False
         self.window = tk.Tk()
+        
         self.sound_enabled = True
         pygame.init()
         self.Screen_x = self.window.winfo_screenwidth()
@@ -101,7 +111,6 @@ class Sharko:
         self.sounds(self.sound_file)
         self.add_talking_sentences(self.IntroLine.strip(),'greeting',False)
         self.window.after(self.GREETING_ANIMATION_DELAY, self.idle_state)
-        #self.window.after(self.GREETING_ANIMATION_DELAY + self.IDLE_ANIMATION_DELAY + self.TALKING_ANIMATION_DELAY, self.idle_state)
         self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND, self.ANSWER_SOUND]
         self.sounds_group = [pygame.mixer.Sound(path) for path in self.sound_paths]
         self.Walking = False
@@ -134,6 +143,8 @@ class Sharko:
         mouse_listener.start()
 
         self.window.mainloop()
+
+
 
     def _decode_escapes(self, s):
 
@@ -271,6 +282,8 @@ class Sharko:
 
 
     def animate(self):
+        if self.label.image == None:
+            return
         if self.geomreminder == True:
             self.geomreminder = False
             if self.CurrentDirection == "Left":
@@ -761,14 +774,97 @@ class Sharko:
         if self.current_state != 'removal' and self.current_state != 'cutscene':
             self.add_removal_sentences()
             self.new_state('removal')
-        if self.current_state == 'removal':
-            pass
-        
-        self.window.after(self.REMOVAL_ANIMATION_DELAY, Sharko.exit)
-        
-        
+        if not getattr(self, '_death_scheduled', False):
+            self._death_scheduled = True
+            self.window.after(self.REMOVAL_ANIMATION_DELAY, self.DeathMiddleman)
+
+
+    def DeathMiddleman(self): #No idea why, but it needs a middleman function to work. Probably because you're not supposed to use TkInter with PyQt
+        x,y = self.window.winfo_x(), self.window.winfo_y()
+        self.window.geometry(f'+{-359}+{-342}')
+        self.window.after(1,self.death_animation,x,y)
+
+
+
     def exit():
         os._exit(0)
+
+
+
+    def death_animation(self,Screen_x,Screen_y):
+
+        TILE_SIZE = 15
+
+
+        class DeathAnimationWidget(QWidget):
+
+            def __init__(self, src_path):
+                super().__init__(None, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
+                self.setAttribute(Qt.WA_TranslucentBackground)
+                self.setWindowFlag(Qt.WindowStaysOnTopHint)
+                self.setWindowFlag(Qt.Tool)
+                self.setWindowFlag(Qt.FramelessWindowHint)
+                self.tiles = []
+                self.timer = QTimer(self)
+                self.timer.timeout.connect(self.animate)
+                self.load_tiles(src_path)
+                src_path.size = (357, 342)
+                self.resize(self.img_w, self.img_h)
+                self.setGeometry(Screen_x,Screen_y-600, self.img_w, self.img_h)
+                self.setFixedSize(500,2000)
+                self.show()
+                self.timer.start(16)
+
+            def load_tiles(self, src_path):
+
+                src = src_path
+                self.img_w = src.width()
+                self.img_h = src.height()
+                for y in range(0, self.img_h, TILE_SIZE):
+                    for x in range(0, self.img_w, TILE_SIZE):
+                        tile_img = src.copy(x, y, TILE_SIZE, TILE_SIZE)
+                        if tile_img.hasAlphaChannel():
+                            self.tiles.append(Tile(QPixmap.fromImage(tile_img), x, y))
+
+            def animate(self):
+                for tile in self.tiles:
+                    tile.update()
+                self.tiles = [t for t in self.tiles if t.alpha > 0]
+                if not self.tiles:
+                    os._exit(0)
+                self.update()
+
+            def paintEvent(self, event):
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.SmoothPixmapTransform)
+                for tile in self.tiles:
+                    painter.save()
+                    painter.setOpacity(tile.alpha / 255.0)
+                    painter.translate(tile.x + TILE_SIZE // 2, tile.y + TILE_SIZE // 2)
+                    painter.rotate(tile.angle)
+                    painter.translate(-TILE_SIZE // 2, -TILE_SIZE // 2)
+                    painter.drawPixmap(0, 0, tile.img)
+                    painter.restore()
+
+        if __name__ == '__main__':
+            app = QApplication(sys.argv)
+            if len(sys.argv) > 1:
+                img_path = sys.argv[1]
+                img_path = state_images[self.frame]
+                img_path = ImageTk.getimage(img_path)
+            else:
+                state_images = self.states.get(self.current_state, [])
+                img_path = state_images[self.frame]
+                img_path = ImageTk.getimage(img_path)
+                img = img_path.convert("RGBA")
+                r, g, b, a = img.split()
+                bgra = Image.merge("RGBA", (b, g, r, a))
+                buf = bgra.tobytes("raw", "RGBA")
+                w,h = img.size
+                qimg = QImage(buf, w ,h , 4*w, QImage.Format_ARGB32)
+                qimg._buf = buf
+            w = DeathAnimationWidget(qimg)
+            sys.exit(app.exec_())
 
 
     def restart_application(self, new_image_path, new_talking_path, new_greeting_path, new_removal_path):
@@ -786,7 +882,6 @@ class Sharko:
         self.CurrentDirection = "Left"
         self.x = 0
         self.geomreminder = True
-        # ensure main behavior loop resumes after rotating
         try:
             self.new_state('Limbo')
         except Exception:
@@ -803,7 +898,6 @@ class Sharko:
         self.x = self.Screen_x-359
 
         self.geomreminder = True
-        # ensure main behavior loop resumes after rotating
         try:
             self.new_state('Limbo')
         except Exception:
@@ -833,7 +927,22 @@ class Sharko:
                 sound.set_volume(1.0) 
 
 
+class Tile:
+        def __init__(self, img, x, y):
+            self.img = img
+            self.x = x
+            self.y = y+600
+            self.vx = random.uniform(-0.2, 0.2)
+            self.vy = random.uniform(-4, -1)
+            self.alpha = 255
+            self.angle = 0
+            self.angvel = random.uniform(-8, 8)
 
+        def update(self):
+            self.x += self.vx
+            self.y += self.vy
+            self.angle = (self.angle + self.angvel) % 360
+            self.alpha = max(0, int(self.alpha * 0.998) - Sharko.FADE_STEP)
 
 
 
