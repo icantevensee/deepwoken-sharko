@@ -801,6 +801,7 @@ class Sharko:
                 self.setWindowFlag(Qt.Tool)
                 self.setWindowFlag(Qt.FramelessWindowHint)
                 self.tiles = []
+                self.firstime = True
                 self.timer = QTimer(self)
                 self.timer.timeout.connect(self.animate)
                 self.load_tiles(src_path)
@@ -810,7 +811,6 @@ class Sharko:
                 self.setFixedSize(500,2000)
                 self.show()
                 self.timer.start(16)
-                window.withdraw()
 
 
             def load_tiles(self, src_path):
@@ -831,6 +831,9 @@ class Sharko:
                 if not self.tiles:
                     os._exit(0)
                 self.update()
+                if self.firstime == True:
+                    window.withdraw()
+                    self.firstime = False
 
             def paintEvent(self, event):
                 painter = QPainter(self)
