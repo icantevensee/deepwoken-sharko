@@ -28,7 +28,7 @@ class Sharko:
     TALKING_ANIMATION_DELAY = 10000
     IDLE_ANIMATION_DELAY = 20000
     GREETING_ANIMATION_DELAY = 8000
-    REMOVAL_ANIMATION_DELAY = 3000
+    REMOVAL_ANIMATION_DELAY = 3800
     INACTIVE_TIME_REQUIREMENT = 60
 
     
@@ -541,7 +541,7 @@ class Sharko:
         except Exception:
             pass
         if self.current_state == 'talking' or self.current_state == 'cutscene' and self.CutsceneIsPlaying == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.Moviemode == False or self.current_state == 'MovieNG' and self.Moviemode == False or self.current_state == 'Limbo':
-            if not self.current_state == 'walking' and not self.current_state == 'cutscene':
+            if not self.current_state == 'walking' and not self.current_state == 'cutscene' and not self.current_state == 'Limbo':
                 sound_file = self.END_TALKING_SOUND
                 self.sounds(sound_file)
             self.new_state('idle')
@@ -776,14 +776,7 @@ class Sharko:
             self.new_state('removal')
         if not getattr(self, '_death_scheduled', False):
             self._death_scheduled = True
-            self.window.after(self.REMOVAL_ANIMATION_DELAY, self.DeathMiddleman)
-
-
-    def DeathMiddleman(self): #No idea why, but it needs a middleman function to work. Probably because you're not supposed to use TkInter with PyQt
-        x,y = self.window.winfo_x(), self.window.winfo_y()
-        self.window.geometry(f'+{-359}+{-342}')
-        self.window.after(1,self.death_animation,x,y)
-
+            self.window.after(self.REMOVAL_ANIMATION_DELAY, self.death_animation)
 
 
     def exit():
@@ -791,7 +784,10 @@ class Sharko:
 
 
 
-    def death_animation(self,Screen_x,Screen_y):
+    def death_animation(self):
+        Screen_x,Screen_y = self.window.winfo_x(), self.window.winfo_y()
+
+        window = self.window
 
         TILE_SIZE = 15
 
@@ -814,6 +810,8 @@ class Sharko:
                 self.setFixedSize(500,2000)
                 self.show()
                 self.timer.start(16)
+                window.withdraw()
+
 
             def load_tiles(self, src_path):
 
@@ -933,7 +931,7 @@ class Tile:
             self.x = x
             self.y = y+600
             self.vx = random.uniform(-0.2, 0.2)
-            self.vy = random.uniform(-4, -1)
+            self.vy = random.uniform(-2, -0.4)
             self.alpha = 255
             self.angle = 0
             self.angvel = random.uniform(-8, 8)
@@ -942,7 +940,7 @@ class Tile:
             self.x += self.vx
             self.y += self.vy
             self.angle = (self.angle + self.angvel) % 360
-            self.alpha = max(0, int(self.alpha * 0.998) - Sharko.FADE_STEP)
+            self.alpha = max(0, int(self.alpha) - Sharko.FADE_STEP)
 
 
 
