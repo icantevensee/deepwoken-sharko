@@ -27,7 +27,7 @@
 - AI integration
 - Coral fever computer virus
 - Settings file
-- Don't expect any new big updates for a while, going to start work on another project, and 2nd semester is hitting hard + Pinkwinter didn't even know how the code worked when he handed the project over to me, so don't expect him to update it. If you want to code your own add-ons, email me and I'll add it in.
+- Don't expect consistent updates. No time + Pinkwinter didn't even know how the code worked when he handed the project over to me, so don't expect him to update it. If you want to code your own add-ons, email me and I'll add it in.
 
 <img src="/img/5.gif" width="400">
 
@@ -45,10 +45,17 @@
 
 <img src="/img/2.png" width="400">
 
+### Credits:
+- Idaspp/Ida:
+- purple_jaz2/Purple Jaz: Extra frames for the
+- diisciples/disciples: Voice actor
+- Sycne & Deepwoken Developers: Original Deepwoken concept
+
+<sub>Format: (Discord User/ Alias)</sub>
 
 
+*Note: Ensure that image and sound files are correctly referenced in the code for proper functionality. If you have any questions, problems, or suggestions, please contact Idaspp/Alexander-Of-Macedon using the email listed on their github profile.*
 
-*Note: Ensure that image and sound files are correctly referenced in the code for proper functionality. If you have any questions, problems, or suggestions, please contact Alexander-Of-Macedon using the email listed on their github profile.*
 
 
 
