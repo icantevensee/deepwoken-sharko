@@ -46,10 +46,11 @@
 <img src="/img/2.png" width="400">
 
 ### Credits:
-- Idaspp/Ida:
-- purple_jaz2/Purple Jaz: Extra frames for the
-- diisciples/disciples: Voice actor
-- Sycne & Deepwoken Developers: Original Deepwoken concept
+- Idaspp/Ida: Current project lead, hiring, programming, and some drawing.
+- icantevensee/pinkiwinter: Original program & base architecture.
+- purple_jaz2/Purple Jaz: Almost all of the animation and drawing.
+- diisciples/disciples: Voice acting.
+- Sycne & Deepwoken Developers: Original Deepwoken Destroyman III.
 
 <sub>Format: (Discord User/ Alias)</sub>
 
