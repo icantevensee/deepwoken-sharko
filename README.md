@@ -20,13 +20,13 @@
 - fixed a bug where the death animation would flicker, and I have no idea why it works.
 - More questions and one new line
 
-### Future updates for V2.3(3.0 if enough of the planned stuff gets added):
-- A option to make the sharko dance(Maybe, if I have enough money to pay for the animation)
+### Future updates for V2.3, Possibly 3.0 in order of priotity (Work is underway!):
+- Boss battle on the desktop [under development]
+- Settings file
+- Coral fever computer virus
 - A cool promotional video with cats on mars playing in the background
 - Some sort of online feature for different users to interact
 - AI integration
-- Coral fever computer virus
-- Settings file
 - Don't expect consistent updates. No time + Pinkwinter didn't even know how the code worked when he handed the project over to me, so don't expect him to update it. If you want to code your own add-ons, email me and I'll add it in.
 
 <img src="/img/5.gif" width="400">
@@ -55,7 +55,7 @@
 <sub>Format: (Discord User/ Alias)</sub>
 
 
-*Note: Ensure that image and sound files are correctly referenced in the code for proper functionality. If you have any questions, problems, or suggestions, please contact Idaspp/Alexander-Of-Macedon using the email listed on their github profile.*
+*Note: Ensure that image and sound files are correctly referenced in the code for proper functionality. If you have any questions, problems, or suggestions, please contact Idaspp using the email listed on their github profile.*
 
 
 
