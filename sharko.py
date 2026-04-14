@@ -13,41 +13,45 @@ from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QPixmap, QPainter, QImage
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
+import threading
+import pythoncom
+from win32com.shell import shell, shellcon
+from win32com.client import Dispatch
+import winshell
+import win32com.client as wcomcli
+import win32gui
+import win32api
+import winreg
+import numpy as np
+import win32process
+from boss_bar import ScalableHealthBar
 
-import ctypes
+# Import modularized components
+from constants import SharkoConstants
+from math_utils import MathUtils
+from shortcut_utils import DesktopUtils
+from tile import Tile
+
+from test import LVM_GETITEMCOUNT
+
+throw_lock = threading.Lock()
+
 # Make Tkinter aware of Windows DPI scaling
 try:
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
 except Exception:
     pass
 
-class Sharko:
-    FADE_STEP = 1
-    WINDOW_SIZE = "357x342"
-    ANIMATION_DELAY = 500
-    TALKING_ANIMATION_DELAY = 10000
-    IDLE_ANIMATION_DELAY = 20000
-    GREETING_ANIMATION_DELAY = 8000
-    REMOVAL_ANIMATION_DELAY = 3800
-    INACTIVE_TIME_REQUIREMENT = 60
-
-    
-
-    IMAGES_PATH = "assets/sharko/"
-    TALKING_SENTENCES_PATH = "assets/sentences/talking/"
-    GREETING_SENTENCES_PATH = "assets/sentences/greeting/"
-    REMOVAL_SENTENCES_PATH = "assets/sentences/removal/"
-    END_TALKING_SOUND = "assets/sounds/end_talking.mp3"
-    START_TALKING_SOUND = "assets/sounds/start_talking.mp3"
-    CLASH_SOUND = "assets/sounds/Clash.mp3"
-    GREETING_SOUND = "assets/sounds/greeting.mp3"
-    ANSWER_SOUND = "assets/sounds/answer_question.mp3"
-
-    FONT = r"TheFont.ttf"
+class Sharko(SharkoConstants):
+    """Main Sharko character class"""
+    thrown_icons = set()
 
 
     def __init__(self, image_path, talking_path, greeting_path, removal_path):
+        app = QApplication(sys.argv)
+
         self._idle_after_id = None
+        self._fight_loop_after_id = None
         try:
             file = open('Lines.txt', 'r', encoding='utf-8')
             self.Lines = file.readlines()
@@ -90,11 +94,13 @@ class Sharko:
 
         self.Quiet = False
         self.CutsceneIsPlaying = False
+        self.FightModeIsOn = False
         self.Moviemode = False
         self.end = False
         self.Beingmoved = False
         self.geomreminder = False
         self.window = tk.Tk()
+        self.active_bar = None
         
         self.sound_enabled = True
         pygame.init()
@@ -116,12 +122,12 @@ class Sharko:
         self.Walking = False
         self.Walkspeed = 230 #Pixels per second
         self.walking_enabled = True
+        self.SupressRightClicks = False
 
         screen_width = windll.user32.GetSystemMetrics(0)
         screen_height = windll.user32.GetSystemMetrics(1)
-        SPI_GETWORKAREA = 0x0030
         desktop_working_area = wintypes.RECT()
-        windll.user32.SystemParametersInfoW(SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
+        windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
         thickness_vertical = screen_height - work_area_height    
         if thickness_vertical > 0:
@@ -136,6 +142,7 @@ class Sharko:
         self.window.geometry(f"+{x}+{y}")
         self.last_input_time = time.time()
 
+
         keyboard_listener = keyboard.Listener(on_press=self.on_press)
         mouse_listener = mouse.Listener(on_move=self.on_click,on_click=self.on_click)
 
@@ -145,9 +152,8 @@ class Sharko:
         self.window.mainloop()
 
 
-
     def _decode_escapes(self, s):
-
+        """Decode escape sequences and HTML entities in strings"""
         if not isinstance(s, str):
             return s
         if ('\\u' in s) or ('\\x' in s) or ('\\U' in s) or ('&#' in s) or ('&' in s):
@@ -162,8 +168,6 @@ class Sharko:
                 pass
             return decoded
         return s
-   
-    
 
     def load_cutscenes(self):
                 #Cutscene Format:
@@ -189,8 +193,6 @@ class Sharko:
         self.REMOVAL_SENTENCES_PATH = removal_path
         self.load_cutscenes()
 
-
-
         self.states = {
             'idle': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png')),
                      tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle2.png'))],
@@ -200,6 +202,8 @@ class Sharko:
                         tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'walk2.png'))],
 
             'talking': [],
+
+            'fight': [],
 
             'greeting': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking1.png')),
                         tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking2.png'))],
@@ -215,6 +219,7 @@ class Sharko:
             'removal': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking1.png')),
                         tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking2.png'))],
         }
+
 
 
     def move_window_x(self,window, target_x):
@@ -249,6 +254,157 @@ class Sharko:
             window.geometry(f'+{new_x}+{window.geometry().split('+')[-1]}')
             window.after(FRAME_DELAY_MS, step_move, current_step + 1, current_x + step_dx)
         window.after(FRAME_DELAY_MS, step_move, 0, start_x)
+
+    def JumpAndHit(self,jump_peak,shortcut,speed):
+        peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
+        folder_view,hwnd_lv = DesktopUtils.get_desktop_interfaces(
+            SharkoConstants.CLSID_ShellWindows,
+            SharkoConstants.IID_IFolderView,
+            SharkoConstants.SWC_DESKTOP,
+            SharkoConstants.SWFO_NEEDDISPATCH
+        )
+        item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
+        screen_height = windll.user32.GetSystemMetrics(1)
+        screen_width = windll.user32.GetSystemMetrics(0)
+        desktop_working_area = wintypes.RECT()
+        windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
+        work_area_height = desktop_working_area.bottom - desktop_working_area.top
+        thickness_vertical = screen_height - work_area_height    
+        if thickness_vertical > 0:
+            TaskbarThick = thickness_vertical
+        else:
+            TaskbarThick = 0
+        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2, 0, screen_width - 357), self.Screen_y-342-TaskbarThick
+
+        P0 = (start_x, start_y)
+        Pmid = (peak_x, peak_y)
+        P2 = (end_x, end_y)
+        B, P1 = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
+        L2 = MathUtils.quadratic_length(P0, P1, P2, n=2000)
+        
+        T = 0.75*(L2/(speed*1800))**0.4
+        Steps = math.floor(T*60)
+        dt = T/Steps
+        original_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+        ts = np.linspace(0, 1, Steps)
+        points = B(ts)
+        hashit = False
+        li = 2
+        img_pth =self.IMAGES_PATH
+        if end_x > start_x:
+            img_pth = self.ALT_1IMAGES_PATH
+        item = folder_view.Item(shortcut)
+        start_pos = folder_view.GetItemPosition(item)
+        pos = win32api.MAKELONG(int(start_pos[0]), int(start_pos[1]))
+        def Step_move(li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name):
+            current_x = math.floor(points[li-1][0])
+            current_y = math.floor(points[li-1][1])
+            previous_x = 0
+            previous_y = 0
+            if li > 2:
+                previous_x = math.floor(points[li-2][0])
+                previous_y = math.floor(points[li-2][1])
+            slope = 0
+            if (current_y-previous_y) != 0 and (current_x-previous_x) != 0:
+                slope = (current_y-previous_y)/math.fabs(current_x-previous_x)*-1
+
+            if slope > 0.5:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump1.png'))
+                self.label.configure(image=self.label.image)
+            elif slope < -0.5:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump3.png'))
+                self.label.configure(image=self.label.image)
+            else:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump2.png'))
+                self.label.configure(image=self.label.image)
+            #Now, depending on slope and x-direction there's going to be a different frame displayed!
+            
+            self.window.geometry(f'+{current_x}+{current_y}')
+            
+            #self.window.geometry(f'+{math.floor(i)}+{math.floor(i)}')
+            if hashit == False:
+
+                current_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+                if not DesktopUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
+
+                    original_count = current_count
+                    shortcut = DesktopUtils.get_actual_index(hwnd_lv, item_name)
+                    print(item_name, DesktopUtils.get_item_text(hwnd_lv, shortcut))
+                    print("Shortcut was probably deleted and recreated, updating index to "+str(shortcut),item_name)
+                    if shortcut == -1: 
+                        shortcut = self.create_shortcut(hwnd_lv)
+                        item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
+
+                win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, shortcut, pos)
+
+
+            if li >= Steps/2 and hashit == False:
+                mouse = win32api.GetCursorPos()
+                hashit = True
+                self.throw_shortcut(shortcut, mouse, speed, item_name)
+
+            li = li + 1
+            if li< Steps:
+                self.window.after(math.ceil(dt*1000),Step_move,li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name)
+            else:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'idle1.png'))
+                self.label.configure(image=self.label.image)
+        Step_move(li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name)
+
+    def Jump(self,jump_end,speed):
+        end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
+        dist = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
+        screen_height = windll.user32.GetSystemMetrics(1)
+        screen_width = windll.user32.GetSystemMetrics(0) 
+        screendiagonal = math.sqrt(screen_height**2+screen_width**2)
+        peak_x, peak_y = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screendiagonal)*0.7)
+
+        P0 = (start_x, start_y)
+        Pmid = (peak_x, peak_y)
+        P2 = (end_x, end_y)
+        B, P1 = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
+        L2 = MathUtils.quadratic_length(P0, P1, P2, n=2000)
+        
+        T = 0.75*(L2/(speed*1800))**0.4
+        Steps = math.floor(T*60)
+        dt = T/Steps
+        ts = np.linspace(0, 1, Steps)
+        points = B(ts)
+        li = 2
+        img_pth =self.IMAGES_PATH
+        if end_x > start_x:
+            img_pth = self.ALT_1IMAGES_PATH
+        def Step_move(li):
+            current_x = math.floor(points[li-1][0])
+            current_y = math.floor(points[li-1][1])
+            previous_x = 0
+            previous_y = 0
+            if li > 2:
+                previous_x = math.floor(points[li-2][0])
+                previous_y = math.floor(points[li-2][1])
+            slope = 0
+            if (current_y-previous_y) != 0 and (current_x-previous_x) != 0:
+                slope = (current_y-previous_y)/math.fabs(current_x-previous_x)*-1
+
+            if slope > 0.5:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump1.png'))
+                self.label.configure(image=self.label.image)
+            elif slope < -0.5:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump3.png'))
+                self.label.configure(image=self.label.image)
+            else:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump2.png'))
+                self.label.configure(image=self.label.image)
+                
+            self.window.geometry(f'+{current_x}+{current_y}')
+            
+            li = li + 1
+            if li < Steps:
+                self.window.after(math.ceil(dt*1000),Step_move,li)
+            else:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'idle1.png'))
+                self.label.configure(image=self.label.image)
+        Step_move(li)
         
 
     def create_gui(self):
@@ -263,6 +419,7 @@ class Sharko:
         self.Movie_menu.add_command(label='On(Glasses)', command=self.MovieOn)
         self.Movie_menu.add_command(label='On(No glasses)', command=self.MovieOn1)
         self.menu.add_cascade(label='Movie mode', menu=self.Movie_menu)
+        self.menu.add_command(label='Fight', command=self.toggle_fight_mode)
         self.menu.add_command(label='Sounds (Off/On)', command=self.sounds_logics)
         self.menu.add_command(label='Walking (Off/On)', command=self.toggle_walking)
         self.menu.add_command(label='Flip side', command=self.flip_side)
@@ -291,7 +448,7 @@ class Sharko:
             else: 
                 self.window.geometry(f'+{self.Screen_x-359}+{self.window.geometry().split('+')[-1]}')
 
-        if self.CutsceneIsPlaying == True:
+        if self.CutsceneIsPlaying == True or self.FightModeIsOn == True:
             return
         state_images = self.states.get(self.current_state, [])
         if not state_images:
@@ -394,6 +551,8 @@ class Sharko:
 
 
     def move1(self, event):
+        if self.FightModeIsOn == True or self.CutsceneIsPlaying == True:
+            return
         self.y = event.y
         self.x = event.x
         self.Beingmoved = True
@@ -443,6 +602,8 @@ class Sharko:
 
 
     def move2(self, event):
+        if self.FightModeIsOn == True or self.CutsceneIsPlaying == True:
+            return
         x = self.window.winfo_pointerx() - self.x
         y = self.window.winfo_pointery() - self.y
         self.window.geometry(f"+{x}+{y}")
@@ -464,7 +625,6 @@ class Sharko:
         self.new_state('MovieNG')
 
     def toggle_walking(self):
-        """Toggle automatic walking on/off from the middle-click menu."""
         self.walking_enabled = not self.walking_enabled
         if not self.walking_enabled and self.current_state == 'walking':
             self.Beingmoved = True
@@ -504,11 +664,13 @@ class Sharko:
 
 
 
-    def on_press(self):
+    def on_press(self, key):
         self.last_input_time = time.time()
         self.Quiet = False
 
-    def on_click(self):
+    def on_click(self,x, y, button):
+        if button == mouse.Button.right and self.SupressRightClicks == True:
+            mouse.Listener.suppress_event(self)
         self.last_input_time = time.time()
         self.Quiet = False
 
@@ -540,7 +702,7 @@ class Sharko:
             self._idle_after_id = None
         except Exception:
             pass
-        if self.current_state == 'talking' or self.current_state == 'cutscene' and self.CutsceneIsPlaying == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.Moviemode == False or self.current_state == 'MovieNG' and self.Moviemode == False or self.current_state == 'Limbo':
+        if self.current_state == 'talking' or self.current_state == 'cutscene' and self.CutsceneIsPlaying == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.Moviemode == False or self.current_state == 'MovieNG' and self.Moviemode == False or self.current_state == 'Limbo' or self.current_state == 'fight' and self.FightModeIsOn == False:
             if not self.current_state == 'walking' and not self.current_state == 'cutscene' and not self.current_state == 'Limbo':
                 sound_file = self.END_TALKING_SOUND
                 self.sounds(sound_file)
@@ -847,25 +1009,209 @@ class Sharko:
                     painter.drawPixmap(0, 0, tile.img)
                     painter.restore()
 
-        if __name__ == '__main__':
-            app = QApplication(sys.argv)
-            if len(sys.argv) > 1:
-                img_path = sys.argv[1]
-                img_path = state_images[self.frame]
-                img_path = ImageTk.getimage(img_path)
-            else:
-                state_images = self.states.get(self.current_state, [])
-                img_path = state_images[self.frame]
-                img_path = ImageTk.getimage(img_path)
-                img = img_path.convert("RGBA")
-                r, g, b, a = img.split()
-                bgra = Image.merge("RGBA", (b, g, r, a))
-                buf = bgra.tobytes("raw", "RGBA")
-                w,h = img.size
-                qimg = QImage(buf, w ,h , 4*w, QImage.Format_ARGB32)
-                qimg._buf = buf
-            w = DeathAnimationWidget(qimg)
-            sys.exit(app.exec_())
+        app = QApplication(sys.argv)
+        if len(sys.argv) > 1:
+            img_path = sys.argv[1]
+            img_path = state_images[self.frame]
+            img_path = ImageTk.getimage(img_path)
+        else:
+            state_images = self.states.get(self.current_state, [])
+            img_path = state_images[self.frame]
+            img_path = ImageTk.getimage(img_path)
+            img = img_path.convert("RGBA")
+            r, g, b, a = img.split()
+            bgra = Image.merge("RGBA", (b, g, r, a))
+            buf = bgra.tobytes("raw", "RGBA")
+            w,h = img.size
+            qimg = QImage(buf, w ,h , 4*w, QImage.Format_ARGB32)
+            qimg._buf = buf
+        w = DeathAnimationWidget(qimg)
+        sys.exit(app.exec_())
+
+    
+    def _throw_worker(self, index, target_pos,speed_factor,name):
+        pythoncom.CoInitialize()
+        with throw_lock:
+            if name in self.thrown_icons:
+                pythoncom.CoUninitialize()
+                return
+            self.thrown_icons.add(name)
+        try:
+
+            folder_view, hwnd_lv = DesktopUtils.get_desktop_interfaces(
+                SharkoConstants.CLSID_ShellWindows,
+                SharkoConstants.IID_IFolderView,
+                SharkoConstants.SWC_DESKTOP,
+                SharkoConstants.SWFO_NEEDDISPATCH
+            )
+            item = None
+            try:
+                item = folder_view.Item(index)
+            except Exception:
+                with throw_lock:
+                    self.thrown_icons.discard(name)
+
+                pythoncom.CoUninitialize()
+                return
+            item_name = name
+            start_pos = folder_view.GetItemPosition(item)
+            original_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+
+            mousex, mousey = target_pos
+            x0, y0 = start_pos
+
+            screen_w = win32api.GetSystemMetrics(0)
+            screen_h = win32api.GetSystemMetrics(1)
+
+            spacing = win32gui.SendMessage(hwnd_lv, 0x1033, 0, 0)
+            cell_h = (spacing >> 16) & 0xFFFF
+
+            end_x = mousex - cell_h ** 1.2 * 0.10
+            end_y = mousey - cell_h ** 1.2 * 0.10
+
+            dx = end_x - x0
+            dy = end_y - y0
+            over_x = x0 + dx * (1+(0.1/speed_factor))
+            over_y = y0 + dy * (1+(0.1/speed_factor))
+
+            over_x = DesktopUtils.clamp(over_x, 0, screen_w - cell_h // 2)
+            over_y = DesktopUtils.clamp(over_y, 0, screen_h - cell_h)
+
+            target_x = DesktopUtils.clamp(end_x, 0, screen_w - cell_h // 2)
+            target_y = DesktopUtils.clamp(end_y, 0, screen_h - cell_h)
+
+            ctrl_x = (x0 + target_x) // 2
+            ctrl_y = min(y0, over_y) - 300
+
+            #folder_view.SelectAndPositionItem(
+            #    item, (-1000, -1000), shellcon.SVSI_POSITIONITEM
+            #)
+
+            steps = math.floor(350*speed_factor)
+            duration = 2.0*speed_factor
+            dt = duration / steps
+            hit_registered = False
+
+            for i in range(steps + 1):
+                current_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+                if not DesktopUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
+                    original_count = current_count
+                    index = DesktopUtils.get_actual_index(hwnd_lv, item_name)
+                    if index == -1: 
+                        with throw_lock:
+                            self.thrown_icons.discard(name)
+
+                        pythoncom.CoUninitialize()
+                        return
+
+                t = i / steps
+                omt = 1 - t
+
+                x = (omt**2) * x0 + 2 * omt * t * ctrl_x + (t**2) * target_x
+                y = (omt**2) * y0 + 2 * omt * t * ctrl_y + (t**2) * target_y
+
+                mx, my = win32api.GetCursorPos()
+
+                if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
+                    hit_registered = True
+
+                pos = win32api.MAKELONG(int(x), int(y))
+                
+                win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
+
+                time.sleep(dt)
+
+            bob_steps = 60
+
+            dist = math.dist((over_x, over_y), (target_x, target_y))
+            dip_amount = DesktopUtils.clamp(dist * 0.15, 5, 80)
+
+            for i in range(bob_steps + 1):
+                current_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+                if not DesktopUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
+                    original_count = current_count
+                    index = DesktopUtils.get_actual_index(hwnd_lv, item_name)
+                    if index == -1: 
+                        with throw_lock:
+                            self.thrown_icons.discard(name)
+
+                        pythoncom.CoUninitialize()
+                        return
+
+                t = (i / bob_steps)**0.8
+                if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
+                    hit_registered = True
+                fall = (1 - t) ** 2
+                base_y = over_y + (target_y - over_y) * fall
+
+                dip = dip_amount * (math.sin(t * math.pi)) ** 2
+
+                y = base_y + dip
+                x = target_x + (over_x - target_x) * t
+
+                x = DesktopUtils.clamp(x, 0, screen_w - cell_h // 2)
+                y = DesktopUtils.clamp(y, 0, screen_h - cell_h)
+
+                pos = win32api.MAKELONG(int(x), int(y))
+
+                win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
+
+                time.sleep(0.01)
+
+        finally:
+
+            with throw_lock:
+                self.thrown_icons.discard(name)
+
+            pythoncom.CoUninitialize()
+
+        
+    def throw_shortcut(self, index, target_pos,speed_factor,name):
+        thread = threading.Thread(
+            target=self._throw_worker,
+            args=(index, target_pos,speed_factor,name),
+            daemon=True,
+        )
+
+        thread.start()
+
+        
+    def get_closest_icons(self, n):
+
+        pythoncom.CoInitialize()
+
+        try:
+            folder_view, _ = DesktopUtils.get_desktop_interfaces(
+                SharkoConstants.CLSID_ShellWindows,
+                SharkoConstants.IID_IFolderView,
+                SharkoConstants.SWC_DESKTOP,
+                SharkoConstants.SWFO_NEEDDISPATCH
+            )
+
+            mouse = win32api.GetCursorPos()
+
+            items_len = folder_view.ItemCount(shellcon.SVGIO_ALLVIEW)
+
+            dists = []
+
+            for i in range(items_len):
+
+                item = folder_view.Item(i)
+                pos = folder_view.GetItemPosition(item)
+
+                d = math.dist(pos, mouse)
+
+                dists.append((d, i))
+
+            dists.sort()
+
+            return [idx for _, idx in dists[:n]],len(dists)
+
+        finally:
+
+            pythoncom.CoUninitialize()
+
+
 
 
     def restart_application(self, new_image_path, new_talking_path, new_greeting_path, new_removal_path):
@@ -905,7 +1251,71 @@ class Sharko:
             pass
 
 
+    def toggle_fight_mode(self):
+        if self.current_state != 'fight':
+            self.FightModeIsOn = True
+            self.SupressRightClicks = True
+            if not self.active_bar:
+                self.active_bar = ScalableHealthBar()
+                
+                # Setup initial size/position
+                import ctypes
+                screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+                self.active_bar.resize(screen_w // 2, 200)
+                
+                # 3. Trigger the entrance
+                self.active_bar.slide_in()
+                print("Boss Bar Created from external file.")
+            self.new_state('fight')
+            self.fight_loop()
+        else:
+            self.FightModeIsOn = False
+            self.SupressRightClicks = False
+            # Cancel any pending fight_loop callbacks to prevent glitches
+            if getattr(self, '_fight_loop_after_id', None) is not None:
+                self.window.after_cancel(self._fight_loop_after_id)
+                self._fight_loop_after_id = None
+            if self.active_bar:
+                self.active_bar.slide_out_to_hide()
+                # We set it to None so we know it's gone
+                self.active_bar = None 
+                print("Boss Bar Deleted.")
+            self.idle_state()
+            self.animate()
 
+    def fight_loop(self):
+        if self.current_state != 'fight':
+            return
+        print("Fight loop running")
+        folder_view, hwnd_lv = DesktopUtils.get_desktop_interfaces(
+            SharkoConstants.CLSID_ShellWindows,
+            SharkoConstants.IID_IFolderView,
+            SharkoConstants.SWC_DESKTOP,
+            SharkoConstants.SWFO_NEEDDISPATCH
+        )
+        closest, num_icons = self.get_closest_icons(1)
+        screen_w = win32api.GetSystemMetrics(0)
+        screen_h = win32api.GetSystemMetrics(1)
+        desktop_working_area = wintypes.RECT()
+        windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
+        work_area_height = desktop_working_area.bottom - desktop_working_area.top
+        x,y = 0,0
+        print(num_icons)
+        if num_icons <= 3:
+            replacementshortcut = self.create_shortcut(hwnd_lv)
+            closest = []
+            closest.append(replacementshortcut)
+            x = random.randint(350,screen_w-350)
+            y = random.randint(350,work_area_height-350)
+
+            pos = win32api.MAKELONG(int(x), int(y))
+            win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, replacementshortcut, pos)
+        item = folder_view.Item(closest[0])
+        item_pos = folder_view.GetItemPosition(item)
+        #self.Jump([random.randint(350, screen_w - 350), screen_h - 500], 1)
+        self.JumpAndHit(item_pos,closest[0],0.4)
+
+        self._fight_loop_after_id = self.window.after(10000, self.fight_loop)
 
 
     def sounds(self, sound_file):
@@ -919,44 +1329,19 @@ class Sharko:
 
     
     def sounds_logics(self):
+        """Toggle sound on/off"""
         self.sound_enabled = not self.sound_enabled
         if not self.sound_enabled:
             for sound in self.sounds_group:
                 sound.set_volume(0.0)  
         else:
             for sound in self.sounds_group:
-                sound.set_volume(1.0) 
+                sound.set_volume(1.0)
 
 
-class Tile:
-        def __init__(self, img, x, y):
-            self.img = img
-            self.x = x
-            self.y = y+600
-            self.vx = random.uniform(-0.2, 0.2)
-            self.vy = random.uniform(-2, -0.4)
-            self.alpha = 255
-            self.angle = 0
-            self.angvel = random.uniform(-8, 8)
-
-        def update(self):
-            self.x += self.vx
-            self.y += self.vy
-            self.angle = (self.angle + self.angvel) % 360
-            self.alpha = max(0, int(self.alpha) - Sharko.FADE_STEP)
-
-
-
-
-
-
-        
-
-sharko = Sharko("assets/sharko/",
-                "assets/sentences/talking/",
-                "assets/sentences/greeting/",
-                "assets/sentences/removal/")
-
-
-sharko.window.mainloop()
-
+# Initialize and run
+if __name__ == "__main__":
+    sharko = Sharko("assets/sharko/",
+                    "assets/sentences/talking/",
+                    "assets/sentences/greeting/",
+                    "assets/sentences/removal/")
