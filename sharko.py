@@ -231,6 +231,9 @@ class Sharko(SharkoConstants):
         num_steps = max(1, duration_ms // FRAME_DELAY_MS)
         step_dx = total_dx / num_steps
         def step_move(current_step, current_x):
+            if self.FightModeIsOn == True:
+                return
+
             if self.end == True or self.Beingmoved == True:
                 self.ANIMATION_DELAY = ANIMATION_DELAYOrig
                 self.window.after(FRAME_DELAY_MS, self.idle_state)
@@ -272,8 +275,11 @@ class Sharko(SharkoConstants):
             TaskbarThick = thickness_vertical
         else:
             TaskbarThick = 0
-        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2, 0, screen_width - 357), self.Screen_y-342-TaskbarThick
-
+        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - 357), self.Screen_y-342-TaskbarThick
+        if end_x - start_x > 0:
+            peak_x = peak_x-84
+        else:
+            peak_x = peak_x-266
         P0 = (start_x, start_y)
         Pmid = (peak_x, peak_y)
         P2 = (end_x, end_y)
@@ -289,12 +295,15 @@ class Sharko(SharkoConstants):
         hashit = False
         li = 2
         img_pth =self.IMAGES_PATH
+        offset = 0
         if end_x > start_x:
             img_pth = self.ALT_1IMAGES_PATH
+            offset = int(359/2)
+
         item = folder_view.Item(shortcut)
         start_pos = folder_view.GetItemPosition(item)
         pos = win32api.MAKELONG(int(start_pos[0]), int(start_pos[1]))
-        def Step_move(li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name):
+        def Step_move(li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset):
             current_x = math.floor(points[li-1][0])
             current_y = math.floor(points[li-1][1])
             previous_x = 0
@@ -305,9 +314,19 @@ class Sharko(SharkoConstants):
             slope = 0
             if (current_y-previous_y) != 0 and (current_x-previous_x) != 0:
                 slope = (current_y-previous_y)/math.fabs(current_x-previous_x)*-1
+            if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
+                if current_x-previous_x-2 > 0:
+                    img_pth = self.ALT_1IMAGES_PATH
+                    offset = int(359/2)
+                elif current_x-previous_x+2 < 0:
+                    img_pth = self.IMAGES_PATH
+                    offset = 0
 
             if slope > 0.5:
                 self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump1.png'))
+                self.label.configure(image=self.label.image)
+            elif slope < -4:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump4.png'))
                 self.label.configure(image=self.label.image)
             elif slope < -0.5:
                 self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump3.png'))
@@ -317,7 +336,7 @@ class Sharko(SharkoConstants):
                 self.label.configure(image=self.label.image)
             #Now, depending on slope and x-direction there's going to be a different frame displayed!
             
-            self.window.geometry(f'+{current_x}+{current_y}')
+            self.window.geometry(f'+{current_x+offset}+{current_y}')
             
             #self.window.geometry(f'+{math.floor(i)}+{math.floor(i)}')
             if hashit == False:
@@ -327,10 +346,9 @@ class Sharko(SharkoConstants):
 
                     original_count = current_count
                     shortcut = DesktopUtils.get_actual_index(hwnd_lv, item_name)
-                    print(item_name, DesktopUtils.get_item_text(hwnd_lv, shortcut))
                     print("Shortcut was probably deleted and recreated, updating index to "+str(shortcut),item_name)
                     if shortcut == -1: 
-                        shortcut = self.create_shortcut(hwnd_lv)
+                        shortcut = DesktopUtils.create_shortcut(hwnd_lv)
                         item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
 
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, shortcut, pos)
@@ -343,11 +361,12 @@ class Sharko(SharkoConstants):
 
             li = li + 1
             if li< Steps:
-                self.window.after(math.ceil(dt*1000),Step_move,li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name)
+                self.window.after(math.ceil(dt*1000),Step_move,li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset)
             else:
+                self.window.geometry(f'+{int(end_x)+offset}+{int(end_y)}')
                 self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'idle1.png'))
                 self.label.configure(image=self.label.image)
-        Step_move(li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name)
+        Step_move(li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset)
 
     def Jump(self,jump_end,speed):
         end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
@@ -356,6 +375,10 @@ class Sharko(SharkoConstants):
         screen_width = windll.user32.GetSystemMetrics(0) 
         screendiagonal = math.sqrt(screen_height**2+screen_width**2)
         peak_x, peak_y = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screendiagonal)*0.7)
+        if end_x - start_x > 0:
+            peak_x = peak_x-84
+        else:
+            peak_x = peak_x-266
 
         P0 = (start_x, start_y)
         Pmid = (peak_x, peak_y)
@@ -387,6 +410,9 @@ class Sharko(SharkoConstants):
             if slope > 0.5:
                 self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump1.png'))
                 self.label.configure(image=self.label.image)
+            elif slope < -4:
+                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump4.png'))
+                self.label.configure(image=self.label.image)
             elif slope < -0.5:
                 self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump3.png'))
                 self.label.configure(image=self.label.image)
@@ -400,6 +426,7 @@ class Sharko(SharkoConstants):
             if li < Steps:
                 self.window.after(math.ceil(dt*1000),Step_move,li)
             else:
+                self.window.geometry(f'+{end_x}+{end_y}')
                 self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'idle1.png'))
                 self.label.configure(image=self.label.image)
         Step_move(li)
@@ -942,15 +969,10 @@ class Sharko(SharkoConstants):
     def exit():
         os._exit(0)
 
-
-
     def death_animation(self):
         Screen_x,Screen_y = self.window.winfo_x(), self.window.winfo_y()
-
         window = self.window
-
         TILE_SIZE = 15
-
 
         class DeathAnimationWidget(QWidget):
 
@@ -967,8 +989,8 @@ class Sharko(SharkoConstants):
                 self.load_tiles(src_path)
                 src_path.size = (357, 342)
                 self.resize(self.img_w, self.img_h)
-                self.setGeometry(Screen_x,Screen_y-600, self.img_w, self.img_h)
-                self.setFixedSize(500,2000)
+                self.setGeometry(Screen_x-50,Screen_y-600, self.img_w, self.img_h)
+                self.setFixedSize(600,2000)
                 self.show()
                 self.timer.start(16)
 
@@ -982,7 +1004,7 @@ class Sharko(SharkoConstants):
                     for x in range(0, self.img_w, TILE_SIZE):
                         tile_img = src.copy(x, y, TILE_SIZE, TILE_SIZE)
                         if tile_img.hasAlphaChannel():
-                            self.tiles.append(Tile(QPixmap.fromImage(tile_img), x, y))
+                            self.tiles.append(Tile(QPixmap.fromImage(tile_img), x+50, y))
 
             def animate(self):
                 for tile in self.tiles:
@@ -1081,10 +1103,6 @@ class Sharko(SharkoConstants):
             ctrl_x = (x0 + target_x) // 2
             ctrl_y = min(y0, over_y) - 300
 
-            #folder_view.SelectAndPositionItem(
-            #    item, (-1000, -1000), shellcon.SVSI_POSITIONITEM
-            #)
-
             steps = math.floor(350*speed_factor)
             duration = 2.0*speed_factor
             dt = duration / steps
@@ -1114,9 +1132,7 @@ class Sharko(SharkoConstants):
                     hit_registered = True
 
                 pos = win32api.MAKELONG(int(x), int(y))
-                
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
-
                 time.sleep(dt)
 
             bob_steps = 60
@@ -1132,7 +1148,6 @@ class Sharko(SharkoConstants):
                     if index == -1: 
                         with throw_lock:
                             self.thrown_icons.discard(name)
-
                         pythoncom.CoUninitialize()
                         return
 
@@ -1151,16 +1166,12 @@ class Sharko(SharkoConstants):
                 y = DesktopUtils.clamp(y, 0, screen_h - cell_h)
 
                 pos = win32api.MAKELONG(int(x), int(y))
-
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
-
                 time.sleep(0.01)
 
         finally:
-
             with throw_lock:
                 self.thrown_icons.discard(name)
-
             pythoncom.CoUninitialize()
 
         
@@ -1170,14 +1181,11 @@ class Sharko(SharkoConstants):
             args=(index, target_pos,speed_factor,name),
             daemon=True,
         )
-
         thread.start()
 
         
     def get_closest_icons(self, n):
-
         pythoncom.CoInitialize()
-
         try:
             folder_view, _ = DesktopUtils.get_desktop_interfaces(
                 SharkoConstants.CLSID_ShellWindows,
@@ -1185,31 +1193,21 @@ class Sharko(SharkoConstants):
                 SharkoConstants.SWC_DESKTOP,
                 SharkoConstants.SWFO_NEEDDISPATCH
             )
-
             mouse = win32api.GetCursorPos()
-
             items_len = folder_view.ItemCount(shellcon.SVGIO_ALLVIEW)
-
             dists = []
 
             for i in range(items_len):
-
                 item = folder_view.Item(i)
                 pos = folder_view.GetItemPosition(item)
-
                 d = math.dist(pos, mouse)
-
                 dists.append((d, i))
 
             dists.sort()
-
             return [idx for _, idx in dists[:n]],len(dists)
 
         finally:
-
             pythoncom.CoUninitialize()
-
-
 
 
     def restart_application(self, new_image_path, new_talking_path, new_greeting_path, new_removal_path):
@@ -1269,15 +1267,15 @@ class Sharko(SharkoConstants):
         else:
             self.FightModeIsOn = False
             self.SupressRightClicks = False
-            # Cancel any pending fight_loop callbacks to prevent glitches
             if getattr(self, '_fight_loop_after_id', None) is not None:
                 self.window.after_cancel(self._fight_loop_after_id)
                 self._fight_loop_after_id = None
             if self.active_bar:
                 self.active_bar.slide_out_to_hide()
-                # We set it to None so we know it's gone
-                self.active_bar = None 
-                print("Boss Bar Deleted.")
+                self.active_bar = None
+
+            for aid in self.window.after_info():
+                self.window.after_cancel(aid)
             self.idle_state()
             self.animate()
 
@@ -1298,9 +1296,8 @@ class Sharko(SharkoConstants):
         windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
         x,y = 0,0
-        print(num_icons)
         if num_icons <= 3:
-            replacementshortcut = self.create_shortcut(hwnd_lv)
+            replacementshortcut = DesktopUtils.create_shortcut(hwnd_lv)
             closest = []
             closest.append(replacementshortcut)
             x = random.randint(350,screen_w-350)
