@@ -32,7 +32,6 @@ from math_utils import MathUtils
 from shortcut_utils import DesktopUtils
 from tile import Tile
 
-from test import LVM_GETITEMCOUNT
 
 throw_lock = threading.Lock()
 
@@ -119,7 +118,6 @@ class Sharko(SharkoConstants):
         self.window.after(self.GREETING_ANIMATION_DELAY, self.idle_state)
         self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND, self.ANSWER_SOUND]
         self.sounds_group = [pygame.mixer.Sound(path) for path in self.sound_paths]
-        self.Walking = False
         self.Walkspeed = 230 #Pixels per second
         self.walking_enabled = True
         self.SupressRightClicks = False
@@ -285,7 +283,7 @@ class Sharko(SharkoConstants):
         T = 0.75*(L2/(speed*1800))**0.4
         Steps = math.floor(T*60)
         dt = T/Steps
-        original_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+        original_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
         ts = np.linspace(0, 1, Steps)
         points = B(ts)
         hashit = False
@@ -324,7 +322,7 @@ class Sharko(SharkoConstants):
             #self.window.geometry(f'+{math.floor(i)}+{math.floor(i)}')
             if hashit == False:
 
-                current_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+                current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
                 if not DesktopUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
 
                     original_count = current_count
@@ -1055,7 +1053,7 @@ class Sharko(SharkoConstants):
                 return
             item_name = name
             start_pos = folder_view.GetItemPosition(item)
-            original_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+            original_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
 
             mousex, mousey = target_pos
             x0, y0 = start_pos
@@ -1093,7 +1091,7 @@ class Sharko(SharkoConstants):
             hit_registered = False
 
             for i in range(steps + 1):
-                current_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+                current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
                 if not DesktopUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
                     original_count = current_count
                     index = DesktopUtils.get_actual_index(hwnd_lv, item_name)
@@ -1127,7 +1125,7 @@ class Sharko(SharkoConstants):
             dip_amount = DesktopUtils.clamp(dist * 0.15, 5, 80)
 
             for i in range(bob_steps + 1):
-                current_count = win32gui.SendMessage(hwnd_lv, LVM_GETITEMCOUNT, 0, 0)
+                current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
                 if not DesktopUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
                     original_count = current_count
                     index = DesktopUtils.get_actual_index(hwnd_lv, item_name)
