@@ -21,6 +21,7 @@
 - More questions and one new line
 
 ### Future updates for V2.3, Possibly 3.0 in order of priotity (Work is underway!):
+### If you would like to test out experimental new content, hop on the new branch and go ahead. However, it will only work if you use the python files, and there may be bugs and unused content.
 - Boss battle on the desktop [under development]
 - Settings file
 - Coral fever computer virus
