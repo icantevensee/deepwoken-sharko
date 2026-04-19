@@ -6,6 +6,11 @@ from PyQt5.QtGui import QPainter, QPixmap, QLinearGradient, QColor, QFont, QFont
 from PyQt5.QtCore import Qt, QRect, QTimer, QPropertyAnimation, QEasingCurve, pyqtProperty, QPoint
 from ctypes import windll
 # --- PATHS ---
+PARRY_IMAGES = [
+    'assets/particlesUI/sparkle2.png', 
+    'assets/particlesUI/spark.png',
+    'assets/particlesUI/ring.png'
+]
 # Ensure these files exist in your project folder
 BAR_IMG_PATH = "assets/UI/boss_bar_border.png"
 MARKER_PATH = "assets/UI/boss_bar_pins.png"

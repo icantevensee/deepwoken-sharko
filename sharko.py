@@ -13,17 +13,15 @@ from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QPixmap, QPainter, QImage
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
+from vfx_manager import VFXManager
 import threading
 import pythoncom
 from win32com.shell import shell, shellcon
 from win32com.client import Dispatch
-import winshell
 import win32com.client as wcomcli
 import win32gui
 import win32api
-import winreg
 import numpy as np
-import win32process
 from boss_bar import ScalableHealthBar
 
 # Import modularized components
@@ -34,6 +32,9 @@ from tile import Tile
 
 
 throw_lock = threading.Lock()
+
+
+
 
 # Make Tkinter aware of Windows DPI scaling
 try:
@@ -47,7 +48,8 @@ class Sharko(SharkoConstants):
 
 
     def __init__(self, image_path, talking_path, greeting_path, removal_path):
-        app = QApplication(sys.argv)
+        self.app = QApplication(sys.argv)
+
 
         self._idle_after_id = None
         self._fight_loop_after_id = None
@@ -116,11 +118,22 @@ class Sharko(SharkoConstants):
         self.sounds(self.sound_file)
         self.add_talking_sentences(self.IntroLine.strip(),'greeting',False)
         self.window.after(self.GREETING_ANIMATION_DELAY, self.idle_state)
-        self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND, self.ANSWER_SOUND]
+        self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND, self.ANSWER_SOUND, self.BLOCK_ATTEMPT_SOUND, self.PARRY_SOUND, self.BLOCK_SOUND,self.HIT_SOUND]
         self.sounds_group = [pygame.mixer.Sound(path) for path in self.sound_paths]
         self.Walkspeed = 230 #Pixels per second
         self.walking_enabled = True
         self.SupressRightClicks = False
+        
+        # Parry and block mechanics
+        self.parry_press_time = 0  # when 'f' was pressed
+        self.parry_active_until = 0  # timestamp when parry window expires
+        self.last_parry_block_time = 0
+        self.blocking = False
+        self.block_active_until = 0  # timestamp when block ends
+        self.parry_window = 0.3  # seconds
+        self.parry_block_cooldown = 0.75  # seconds
+        self.block_transition_callback = None  # scheduled callback to transition to block mode
+        self.f_key_held = False  # tracks current f key state
 
         screen_width = windll.user32.GetSystemMetrics(0)
         screen_height = windll.user32.GetSystemMetrics(1)
@@ -141,7 +154,7 @@ class Sharko(SharkoConstants):
         self.last_input_time = time.time()
 
 
-        keyboard_listener = keyboard.Listener(on_press=self.on_press)
+        keyboard_listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         mouse_listener = mouse.Listener(on_move=self.on_click,on_click=self.on_click)
 
         keyboard_listener.start()
@@ -217,6 +230,22 @@ class Sharko(SharkoConstants):
             'removal': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking1.png')),
                         tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking2.png'))],
         }
+        
+        # Pre-load jump images for fighting to avoid loading them in each frame
+        self.jump_images = {
+            'jump1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump1.png')),
+            'jump2': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump2.png')),
+            'jump3': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump3.png')),
+            'jump4': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump4.png')),
+            'idle1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png'))
+        }
+        self.alt_jump_images = {
+            'jump1': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump1.png')),
+            'jump2': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump2.png')),
+            'jump3': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump3.png')),
+            'jump4': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump4.png')),
+            'idle1': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'idle1.png'))
+        }
 
 
 
@@ -256,7 +285,7 @@ class Sharko(SharkoConstants):
             window.after(FRAME_DELAY_MS, step_move, current_step + 1, current_x + step_dx)
         window.after(FRAME_DELAY_MS, step_move, 0, start_x)
 
-    def JumpAndHit(self,jump_peak,shortcut,speed):
+    def JumpAndHit(self,jump_peak,shortcut,speed,on_complete=None):
         peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
         folder_view,hwnd_lv = DesktopUtils.get_desktop_interfaces(
             SharkoConstants.CLSID_ShellWindows,
@@ -286,14 +315,17 @@ class Sharko(SharkoConstants):
         B, P1 = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
         L2 = MathUtils.quadratic_length(P0, P1, P2, n=2000)
         
-        T = 0.75*(L2/(speed*1800))**0.4
+        T = 1*(L2/(speed*1800))**0.4
         Steps = math.floor(T*60)
         dt = T/Steps
         original_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
         ts = np.linspace(0, 1, Steps)
         points = B(ts)
         hashit = False
-        li = 2
+        hit_detected = False
+        sprite_width = 165
+        sprite_height = 165
+        current_step = 2
         img_pth =self.IMAGES_PATH
         offset = 0
         if end_x > start_x:
@@ -303,14 +335,20 @@ class Sharko(SharkoConstants):
         item = folder_view.Item(shortcut)
         start_pos = folder_view.GetItemPosition(item)
         pos = win32api.MAKELONG(int(start_pos[0]), int(start_pos[1]))
-        def Step_move(li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset):
-            current_x = math.floor(points[li-1][0])
-            current_y = math.floor(points[li-1][1])
+        
+        # Cache image dictionaries for performance
+        cached_images = self.alt_jump_images if img_pth == self.ALT_1IMAGES_PATH else self.jump_images
+        last_image = None  # Track last displayed image to avoid redundant updates
+        
+        def Step_move(current_step,hashit,hit_detected,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset):
+            nonlocal last_image
+            current_x = math.floor(points[current_step-1][0])
+            current_y = math.floor(points[current_step-1][1])
             previous_x = 0
             previous_y = 0
-            if li > 2:
-                previous_x = math.floor(points[li-2][0])
-                previous_y = math.floor(points[li-2][1])
+            if current_step > 2:
+                previous_x = math.floor(points[current_step-2][0])
+                previous_y = math.floor(points[current_step-2][1])
             slope = 0
             if (current_y-previous_y) != 0 and (current_x-previous_x) != 0:
                 slope = (current_y-previous_y)/math.fabs(current_x-previous_x)*-1
@@ -322,28 +360,45 @@ class Sharko(SharkoConstants):
                     img_pth = self.IMAGES_PATH
                     offset = 0
 
+            # Use preloaded image dictionary and only update if image changes
+            new_image = None
             if slope > 0.5:
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump1.png'))
-                self.label.configure(image=self.label.image)
+                new_image = cached_images['jump1']
             elif slope < -4:
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump4.png'))
-                self.label.configure(image=self.label.image)
+                new_image = cached_images['jump4']
             elif slope < -0.5:
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump3.png'))
-                self.label.configure(image=self.label.image)
+                new_image = cached_images['jump3']
             else:
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump2.png'))
-                self.label.configure(image=self.label.image)
-            #Now, depending on slope and x-direction there's going to be a different frame displayed!
+                new_image = cached_images['jump2']
+            
+            if new_image != last_image:
+                self.label.image = new_image
+                self.label.configure(image=new_image)
+                last_image = new_image
             
             self.window.geometry(f'+{current_x+offset}+{current_y}')
             
-            #self.window.geometry(f'+{math.floor(i)}+{math.floor(i)}')
-            if hashit == False:
+            # Only check cursor collision every 2 frames to reduce system calls
+            if not hit_detected:
+                mouse_x, mouse_y = win32api.GetCursorPos()
+                sprite_x = current_x + offset
+                sprite_y = current_y
 
+                if img_pth == self.ALT_1IMAGES_PATH:
+                    sprite_x += 0
+                    sprite_y += 178
+                else:
+                    sprite_x += 190
+                    sprite_y += 178
+                
+                if (sprite_x <= mouse_x <= sprite_x + sprite_width and 
+                    sprite_y <= mouse_y <= sprite_y + sprite_height):
+                    hit_detected = True
+                    self.damage()
+            
+            if hashit == False:
                 current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
                 if not DesktopUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
-
                     original_count = current_count
                     shortcut = DesktopUtils.get_actual_index(hwnd_lv, item_name)
                     print("Shortcut was probably deleted and recreated, updating index to "+str(shortcut),item_name)
@@ -352,23 +407,25 @@ class Sharko(SharkoConstants):
                         item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
 
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, shortcut, pos)
+            
 
-
-            if li >= Steps/2 and hashit == False:
+            if current_step >= Steps/2 and hashit == False:
                 mouse = win32api.GetCursorPos()
                 hashit = True
                 self.throw_shortcut(shortcut, mouse, speed, item_name)
 
-            li = li + 1
-            if li< Steps:
-                self.window.after(math.ceil(dt*1000),Step_move,li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset)
+            current_step = current_step + 1
+            if current_step< Steps:
+                self.window.after(math.ceil(dt*1000),Step_move,current_step,hashit,hit_detected,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset)
             else:
-                self.window.geometry(f'+{int(end_x)+offset}+{int(end_y)}')
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'idle1.png'))
+                self.window.geometry(f'+{int(end_x)}+{int(end_y)}')
+                self.label.image = cached_images['idle1']
                 self.label.configure(image=self.label.image)
-        Step_move(li,hashit,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset)
+                if on_complete:
+                    on_complete()
+        Step_move(current_step,hashit,hit_detected,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset)
 
-    def Jump(self,jump_end,speed):
+    def Jump(self,jump_end,speed,on_complete=None):
         end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
         dist = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
         screen_height = windll.user32.GetSystemMetrics(1)
@@ -391,45 +448,87 @@ class Sharko(SharkoConstants):
         dt = T/Steps
         ts = np.linspace(0, 1, Steps)
         points = B(ts)
-        li = 2
-        img_pth =self.IMAGES_PATH
+        current_step = 2
+        img_pth = self.IMAGES_PATH
+        offset = 0
+        hit_detected = False
+        sprite_width = 165
+        sprite_height = 165
         if end_x > start_x:
             img_pth = self.ALT_1IMAGES_PATH
-        def Step_move(li):
-            current_x = math.floor(points[li-1][0])
-            current_y = math.floor(points[li-1][1])
+            offset = int(359/2)
+        
+        # Cache image dictionaries for performance
+        cached_images = self.alt_jump_images if img_pth == self.ALT_1IMAGES_PATH else self.jump_images
+        frame_counter = 0  # Track frames for cursor position sampling
+        last_image = None  # Track last displayed image to avoid redundant updates
+        
+        def Step_move(current_step, hit_detected,img_pth,offset):
+            nonlocal frame_counter, last_image
+            frame_counter += 1
+            current_x = math.floor(points[current_step-1][0])
+            current_y = math.floor(points[current_step-1][1])
             previous_x = 0
             previous_y = 0
-            if li > 2:
-                previous_x = math.floor(points[li-2][0])
-                previous_y = math.floor(points[li-2][1])
+            if current_step > 2:
+                previous_x = math.floor(points[current_step-2][0])
+                previous_y = math.floor(points[current_step-2][1])
             slope = 0
             if (current_y-previous_y) != 0 and (current_x-previous_x) != 0:
                 slope = (current_y-previous_y)/math.fabs(current_x-previous_x)*-1
+            if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
+                if current_x-previous_x-2 > 0:
+                    img_pth = self.ALT_1IMAGES_PATH
+                    offset = int(359/2)
+                elif current_x-previous_x+2 < 0:
+                    img_pth = self.IMAGES_PATH
+                    offset = 0
 
+            # Use preloaded image dictionary and only update if image changes
+            new_image = None
             if slope > 0.5:
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump1.png'))
-                self.label.configure(image=self.label.image)
+                new_image = cached_images['jump1']
             elif slope < -4:
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump4.png'))
-                self.label.configure(image=self.label.image)
+                new_image = cached_images['jump4']
             elif slope < -0.5:
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump3.png'))
-                self.label.configure(image=self.label.image)
+                new_image = cached_images['jump3']
             else:
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'jump2.png'))
-                self.label.configure(image=self.label.image)
-                
-            self.window.geometry(f'+{current_x}+{current_y}')
+                new_image = cached_images['jump2']
             
-            li = li + 1
-            if li < Steps:
-                self.window.after(math.ceil(dt*1000),Step_move,li)
+            if new_image != last_image:
+                self.label.image = new_image
+                self.label.configure(image=new_image)
+                last_image = new_image
+            
+            self.window.geometry(f'+{current_x+offset}+{current_y}')
+            
+            # Only check cursor collision every 2 frames to reduce system calls
+            if not hit_detected and frame_counter % 2 == 0:
+                mouse_x, mouse_y = win32api.GetCursorPos()
+                sprite_x = current_x + offset
+                sprite_y = current_y
+                if img_pth == self.ALT_1IMAGES_PATH:
+                    sprite_x += 192
+                    sprite_y += 178
+                else:
+                    sprite_x += 0
+                    sprite_y += 0
+                
+                if (sprite_x <= mouse_x <= sprite_x + sprite_width and 
+                    sprite_y <= mouse_y <= sprite_y + sprite_height):
+                    hit_detected = True
+                    self.damage()
+            
+            current_step = current_step + 1
+            if current_step < Steps:
+                self.window.after(math.ceil(dt*1000),Step_move,current_step,hit_detected,img_pth,offset)
             else:
-                self.window.geometry(f'+{end_x}+{end_y}')
-                self.label.image = tk.PhotoImage(file=os.path.join(img_pth, 'idle1.png'))
+                self.window.geometry(f'+{int(end_x)}+{int(end_y)}')
+                self.label.image = cached_images['idle1']
                 self.label.configure(image=self.label.image)
-        Step_move(li)
+                if on_complete:
+                    on_complete()
+        Step_move(current_step, hit_detected,img_pth,offset)
         
 
     def create_gui(self):
@@ -692,6 +791,63 @@ class Sharko(SharkoConstants):
     def on_press(self, key):
         self.last_input_time = time.time()
         self.Quiet = False
+        try:
+            if key.char == 'f':
+                # Only initialize on first press, not on key repeat
+                current_time = time.time()
+                if self.parry_press_time == 0 and current_time - self.last_parry_block_time >= self.parry_block_cooldown:
+                    print("parryinit")
+                    self.last_parry_block_time = current_time
+                    # Cancel any pending callback from previous key press
+                    if self.block_transition_callback:
+                        try:
+                            self.window.after_cancel(self.block_transition_callback)
+                        except Exception:
+                            pass
+                        self.block_transition_callback = None
+                    
+                    # Start parry window
+                    self.f_key_held = True
+                    self.parry_press_time = time.time()
+                    self.parry_active_until = self.parry_press_time + self.parry_window
+                    
+                    # Schedule block transition at 0.3s mark
+                    def transition_to_block():
+                        # Check both that key is held AND that 0.3s has actually passed
+                        if self.f_key_held and (time.time() - self.parry_press_time) >= self.parry_window:
+                            self.blocking = True
+                            self.block_active_until = time.time() + self.parry_window
+                            # Extend parry window to include block window
+                            self.parry_active_until = self.block_active_until
+                            try:
+                                self.sounds(self.BLOCK_ATTEMPT_SOUND)
+                            except Exception as e:
+                                print(f"Error playing block attempt sound: {e}")
+                    
+                    self.block_transition_callback = self.window.after(
+                        int(self.parry_window * 1000), transition_to_block
+                    )
+        except AttributeError:
+            pass
+
+    def on_release(self, key):
+        # Handle parry key release (f)
+        try:
+            if key.char == 'f':
+                self.f_key_held = False
+                # Cancel pending block transition if released early
+                if self.block_transition_callback:
+                    try:
+                        self.window.after_cancel(self.block_transition_callback)
+                    except Exception:
+                        pass
+                    self.block_transition_callback = None
+                
+                # If we were blocking, stop it on release
+                self.blocking = False
+                self.parry_press_time = 0
+        except AttributeError:
+            pass
 
     def on_click(self,x, y, button):
         if button == mouse.Button.right and self.SupressRightClicks == True:
@@ -922,7 +1078,7 @@ class Sharko(SharkoConstants):
                 tk_img = ImageTk.PhotoImage(text_img)
             except Exception:
                 return
-            self.states['talking'].extend([tk_img, tk_img])
+            self.states[state] = [tk_img, tk_img]
             return
 
         def composite_on_base(base_img):
@@ -983,6 +1139,7 @@ class Sharko(SharkoConstants):
                 self.setWindowFlag(Qt.Tool)
                 self.setWindowFlag(Qt.FramelessWindowHint)
                 self.tiles = []
+                self.vfx = []
                 self.firstime = True
                 self.timer = QTimer(self)
                 self.timer.timeout.connect(self.animate)
@@ -1028,14 +1185,13 @@ class Sharko(SharkoConstants):
                     painter.translate(-TILE_SIZE // 2, -TILE_SIZE // 2)
                     painter.drawPixmap(0, 0, tile.img)
                     painter.restore()
+        state_images = self.states.get(self.current_state, [])
 
-        app = QApplication(sys.argv)
         if len(sys.argv) > 1:
             img_path = sys.argv[1]
             img_path = state_images[self.frame]
             img_path = ImageTk.getimage(img_path)
         else:
-            state_images = self.states.get(self.current_state, [])
             img_path = state_images[self.frame]
             img_path = ImageTk.getimage(img_path)
             img = img_path.convert("RGBA")
@@ -1046,9 +1202,75 @@ class Sharko(SharkoConstants):
             qimg = QImage(buf, w ,h , 4*w, QImage.Format_ARGB32)
             qimg._buf = buf
         w = DeathAnimationWidget(qimg)
-        sys.exit(app.exec_())
+        
+        sys.exit(self.app.exec_())
 
     
+    def damage(self):
+        current_time = time.time()
+        mouse_x, mouse_y = win32api.GetCursorPos()
+        
+        # Check if in parry/block window (parry window OR key is still held)
+        if current_time < self.parry_active_until or self.f_key_held:
+            # Check cooldown
+            # Calculate how long the key has been held
+            time_held = current_time - self.parry_press_time if self.f_key_held else 0
+            # Block if held >= 0.3s, otherwise parry
+            if time_held >= self.parry_window:
+                print("Blocked! Attack negated.")
+                self.last_parry_block_time = 0
+                try:
+                    self.sounds(self.BLOCK_SOUND)
+                except Exception as e:
+                    print(f"Error playing block sound: {e}")
+                if self.vfx:
+                    self.vfx.play_block(mouse_x, mouse_y)
+            else:
+                print("Parried! Attack blocked.")
+                self.last_parry_block_time = 0
+                try:
+                    self.sounds(self.PARRY_SOUND)
+                except Exception as e:
+                    print(f"Error playing parry sound: {e}")
+                if self.vfx:
+                    self.vfx.play_parry(mouse_x, mouse_y)
+            
+            # Clear flags after successful block/parry
+            self.blocking = False
+            self.parry_active_until = 0
+            self.block_active_until = 0
+            # Don't clear f_key_held - user is still physically holding the key
+            if self.block_transition_callback:
+                try:
+                    self.window.after_cancel(self.block_transition_callback)
+                except Exception:
+                    pass
+                self.block_transition_callback = None
+            return
+        
+        # Clear outdated flags
+        if current_time >= self.parry_active_until:
+            self.blocking = False
+            self.parry_active_until = 0
+            self.block_active_until = 0
+            self.f_key_held = False
+            if self.block_transition_callback:
+                try:
+                    self.window.after_cancel(self.block_transition_callback)
+                except Exception:
+                    pass
+                self.block_transition_callback = None
+        
+        print("Hit! Damage dealt.")
+        # Play blood effect and hit sound
+        if self.vfx:
+            self.vfx.play_blood(mouse_x, mouse_y)
+        try:
+            # Try to play a hit/damage sound if it exists
+            self.sounds(self.HIT_SOUND)
+        except Exception as e:
+            pass
+
     def _throw_worker(self, index, target_pos,speed_factor,name):
         pythoncom.CoInitialize()
         with throw_lock:
@@ -1103,7 +1325,7 @@ class Sharko(SharkoConstants):
             ctrl_x = (x0 + target_x) // 2
             ctrl_y = min(y0, over_y) - 300
 
-            steps = math.floor(350*speed_factor)
+            steps = math.floor(250*speed_factor)
             duration = 2.0*speed_factor
             dt = duration / steps
             hit_registered = False
@@ -1130,12 +1352,13 @@ class Sharko(SharkoConstants):
 
                 if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
                     hit_registered = True
+                    self.damage()
 
                 pos = win32api.MAKELONG(int(x), int(y))
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
                 time.sleep(dt)
 
-            bob_steps = 60
+            bob_steps = 45
 
             dist = math.dist((over_x, over_y), (target_x, target_y))
             dip_amount = DesktopUtils.clamp(dist * 0.15, 5, 80)
@@ -1154,6 +1377,7 @@ class Sharko(SharkoConstants):
                 t = (i / bob_steps)**0.8
                 if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
                     hit_registered = True
+                    self.damage()
                 fall = (1 - t) ** 2
                 base_y = over_y + (target_y - over_y) * fall
 
@@ -1253,27 +1477,26 @@ class Sharko(SharkoConstants):
             self.SupressRightClicks = True
             if not self.active_bar:
                 self.active_bar = ScalableHealthBar()
-                
-                # Setup initial size/position
-                import ctypes
                 screen_w = ctypes.windll.user32.GetSystemMetrics(0)
                 self.active_bar.resize(screen_w // 2, 200)
-                
-                # 3. Trigger the entrance
                 self.active_bar.slide_in()
                 print("Boss Bar Created from external file.")
+                self.vfx = VFXManager()
+                self.vfx.play_block(500, 500)
+                self.vfx.play_parry(600, 500)
             self.new_state('fight')
             self.fight_loop()
         else:
             self.FightModeIsOn = False
             self.SupressRightClicks = False
+            self.vfx.deinitialize()
+            del self.vfx
             if getattr(self, '_fight_loop_after_id', None) is not None:
                 self.window.after_cancel(self._fight_loop_after_id)
                 self._fight_loop_after_id = None
             if self.active_bar:
                 self.active_bar.slide_out_to_hide()
                 self.active_bar = None
-
             for aid in self.window.after_info():
                 self.window.after_cancel(aid)
             self.idle_state()
@@ -1283,6 +1506,13 @@ class Sharko(SharkoConstants):
         if self.current_state != 'fight':
             return
         print("Fight loop running")
+        
+        #self.vfx.start_spirit_beam("main_beam", 0, 0, 0, 0)
+
+        #mx, my = win32api.GetCursorPos()
+        #self.vfx.update_spirit_beam("main_beam", mx, my, mx, my)
+        self.window.after(2000, lambda: self.vfx.stop_spirit_beam("main_beam"))
+        
         folder_view, hwnd_lv = DesktopUtils.get_desktop_interfaces(
             SharkoConstants.CLSID_ShellWindows,
             SharkoConstants.IID_IFolderView,
@@ -1307,10 +1537,13 @@ class Sharko(SharkoConstants):
             win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, replacementshortcut, pos)
         item = folder_view.Item(closest[0])
         item_pos = folder_view.GetItemPosition(item)
-        #self.Jump([random.randint(350, screen_w - 350), screen_h - 500], 1)
-        self.JumpAndHit(item_pos,closest[0],0.4)
-
-        self._fight_loop_after_id = self.window.after(10000, self.fight_loop)
+        
+        def schedule_next_attack():
+            """Schedule the next attack 2 seconds after this one finishes"""
+            self._fight_loop_after_id = self.window.after(2000, self.fight_loop)
+        
+        #self.Jump([random.randint(350, screen_w - 350), work_area_height - 343], 1)
+        self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
 
 
     def sounds(self, sound_file):

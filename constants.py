@@ -36,6 +36,12 @@ class SharkoConstants:
     GREETING_SOUND = "assets/sounds/greeting.mp3"
     ANSWER_SOUND = "assets/sounds/answer_question.mp3"
     
+    # Fight SFX sounds
+    BLOCK_ATTEMPT_SOUND = "assets/sounds/fight-sfx/Block_Attempt.mp3"
+    PARRY_SOUND = "assets/sounds/fight-sfx/Parry.mp3"
+    BLOCK_SOUND = "assets/sounds/fight-sfx/Block.mp3"
+    HIT_SOUND = "assets/sounds/fight-sfx/Hit.mp3"
+
     # Fonts
     FONT = r"assets/fonts/TheFont.ttf"
     
