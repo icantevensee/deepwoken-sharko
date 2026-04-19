@@ -326,10 +326,10 @@ class Sharko(SharkoConstants):
         sprite_width = 165
         sprite_height = 165
         current_step = 2
-        img_pth =self.IMAGES_PATH
+        cached_images = self.jump_images
         offset = 0
         if end_x > start_x:
-            img_pth = self.ALT_1IMAGES_PATH
+            cached_images = self.alt_jump_images
             offset = int(359/2)
 
         item = folder_view.Item(shortcut)
@@ -337,10 +337,9 @@ class Sharko(SharkoConstants):
         pos = win32api.MAKELONG(int(start_pos[0]), int(start_pos[1]))
         
         # Cache image dictionaries for performance
-        cached_images = self.alt_jump_images if img_pth == self.ALT_1IMAGES_PATH else self.jump_images
         last_image = None  # Track last displayed image to avoid redundant updates
         
-        def Step_move(current_step,hashit,hit_detected,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset):
+        def Step_move(current_step,hashit,hit_detected,shortcut,original_count,item_name,offset,cached_images):
             nonlocal last_image
             current_x = math.floor(points[current_step-1][0])
             current_y = math.floor(points[current_step-1][1])
@@ -354,10 +353,10 @@ class Sharko(SharkoConstants):
                 slope = (current_y-previous_y)/math.fabs(current_x-previous_x)*-1
             if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
                 if current_x-previous_x-2 > 0:
-                    img_pth = self.ALT_1IMAGES_PATH
+                    cached_images = self.alt_jump_images
                     offset = int(359/2)
                 elif current_x-previous_x+2 < 0:
-                    img_pth = self.IMAGES_PATH
+                    cached_images = self.jump_images
                     offset = 0
 
             # Use preloaded image dictionary and only update if image changes
@@ -384,7 +383,7 @@ class Sharko(SharkoConstants):
                 sprite_x = current_x + offset
                 sprite_y = current_y
 
-                if img_pth == self.ALT_1IMAGES_PATH:
+                if cached_images == self.alt_jump_images:
                     sprite_x += 0
                     sprite_y += 178
                 else:
@@ -416,14 +415,14 @@ class Sharko(SharkoConstants):
 
             current_step = current_step + 1
             if current_step< Steps:
-                self.window.after(math.ceil(dt*1000),Step_move,current_step,hashit,hit_detected,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset)
+                self.window.after(math.ceil(dt*1000),Step_move,current_step,hashit,hit_detected,shortcut,original_count,item_name,offset,cached_images)
             else:
-                self.window.geometry(f'+{int(end_x)}+{int(end_y)}')
+                self.window.geometry(f'+{int(end_x+offset)}+{int(end_y)}')
                 self.label.image = cached_images['idle1']
                 self.label.configure(image=self.label.image)
                 if on_complete:
                     on_complete()
-        Step_move(current_step,hashit,hit_detected,folder_view,hwnd_lv,shortcut,pos,original_count,item_name,img_pth,offset)
+        Step_move(current_step,hashit,hit_detected,shortcut,original_count,item_name,offset,cached_images)
 
     def Jump(self,jump_end,speed,on_complete=None):
         end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
@@ -1511,7 +1510,6 @@ class Sharko(SharkoConstants):
 
         #mx, my = win32api.GetCursorPos()
         #self.vfx.update_spirit_beam("main_beam", mx, my, mx, my)
-        self.window.after(2000, lambda: self.vfx.stop_spirit_beam("main_beam"))
         
         folder_view, hwnd_lv = DesktopUtils.get_desktop_interfaces(
             SharkoConstants.CLSID_ShellWindows,
