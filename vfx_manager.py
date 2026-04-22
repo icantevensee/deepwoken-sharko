@@ -2,9 +2,32 @@ import sys
 import os
 import random
 import math
-from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtWidgets import QApplication,QWidget
 from PyQt5.QtCore import Qt, QTimer, QRectF, QPointF
-from PyQt5.QtGui import QPainter, QPixmap, QColor
+from PyQt5.QtGui import QPainter, QPixmap, QColor, QPen
+
+class Laser:
+    def __init__(self, x, y, angle, color=QColor(0, 120, 255), start_offset=50):
+        self.origin = QPointF(float(x), float(y))
+        self.angle = angle
+        self.color = color
+        self.thickness = 30
+        self.flicker = 0.0
+        self.start_offset = start_offset
+        self.alpha = 0.0  
+        self.state = "fading_in" 
+        self.fade_speed = 0.1    
+
+    def update_fade(self):
+        if self.state == "fading_in":
+            self.alpha += self.fade_speed
+            if self.alpha >= 1.0:
+                self.alpha = 1.0
+                self.state = "active"
+        elif self.state == "fading_out":
+            self.alpha -= self.fade_speed
+            return self.alpha > 0
+        return True
 
 class Particle:
     def __init__(self, x, y, p_type, pixmap=None):
@@ -37,16 +60,22 @@ class Particle:
             self.rotation = random.uniform(0, 360)
             self.rot_speed = random.uniform(-15, 15)
         elif p_type == 'blood':
-            # EVEN SPREAD: Full 360 degrees
             angle = random.uniform(0, 2 * math.pi) 
             speed = random.uniform(4, 12)
             self.vel = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
-            # LESS FALL: Reduced gravity
             self.gravity = QPointF(0, 0.2) 
             self.friction = 0.94 
             self.size = random.uniform(4, 10)
             self.rotation = random.uniform(0, 360)
             self.rot_speed = random.uniform(-15, 15)
+        elif p_type == 'laser_square':
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(2, 8)
+            self.vel = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
+            self.friction = 0.92
+            self.size = random.uniform(10, 20)
+            self.rotation = random.uniform(0, 360)
+            self.rot_speed = random.uniform(-10, 10)
 
     def update(self, dt):
         self.elapsed += dt
@@ -65,7 +94,10 @@ class Particle:
             self.alpha -= 0.08
         elif self.p_type == 'blood':
             self.rotation += self.rot_speed
-            self.alpha -= 0.03 # Fades slightly faster than before to keep it clean
+            self.alpha -= 0.03 
+        elif self.p_type == 'laser_square':
+            self.rotation += self.rot_speed
+            self.alpha -= 0.04
         else: # spark/block
             self.alpha -= 0.05
             
@@ -77,6 +109,7 @@ class VFXManager(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.particles = []
+        self.lasers = {} 
         self.textures = {}
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self._load_assets()
@@ -101,6 +134,17 @@ class VFXManager(QWidget):
                 p.fillRect(tinted.rect(), QColor(255, 255, 0)); p.end()
                 self.textures[key] = tinted
 
+    def set_laser(self, laser_id, x, y, angle, color=QColor(0, 150, 255), offset=60):
+        if laser_id not in self.lasers:
+            self.lasers[laser_id] = Laser(x, y, angle, color, start_offset=offset)
+        else:
+            l = self.lasers[laser_id]
+            l.origin, l.angle, l.color, l.start_offset = QPointF(float(x), float(y)), angle, color, offset
+            if l.state == "fading_out": l.state = "fading_in"
+
+    def remove_laser(self, laser_id):
+        if laser_id in self.lasers: self.lasers[laser_id].state = "fading_out"
+
     def play_parry(self, x, y):
         available_sparkles = [k for k in ["sparkle1", "sparkle2", "sparkle3"] if k in self.textures]
         if len(available_sparkles) >= 2:
@@ -119,17 +163,49 @@ class VFXManager(QWidget):
 
     def update_vfx(self):
         self.particles = [p for p in self.particles if p.update(0.016)]
+        to_remove = []
+        for lid, l in self.lasers.items():
+            if not l.update_fade(): 
+                to_remove.append(lid)
+                continue
+            l.flicker = random.uniform(-2.5, 2.5)
+            # Only spawn trailing squares if laser is visible enough
+            if l.alpha > 0.4 and random.random() > 0.15:
+                rad = math.radians(l.angle)
+                dist = random.uniform(l.start_offset, 2000)
+                px, py = l.origin.x() + math.cos(rad) * dist, l.origin.y() + math.sin(rad) * dist
+                self.particles.append(Particle(px, py, 'laser_square'))
+        for lid in to_remove: del self.lasers[lid]
         self.update()
 
     def deinitialize(self):
-        self.timer.stop(); self.hide(); self.particles.clear(); self.deleteLater()
+        self.timer.stop(); self.hide(); self.particles.clear(); self.lasers.clear(); self.deleteLater()
 
     def paintEvent(self, event):
-        if not self.particles: return
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setCompositionMode(QPainter.CompositionMode_Plus)
 
+        # 1. DRAW LASERS
+        for laser in self.lasers.values():
+            painter.save()
+            painter.setOpacity(laser.alpha)
+            rad = math.radians(laser.angle)
+            start_p = QPointF(laser.origin.x() + math.cos(rad) * laser.start_offset, 
+                             laser.origin.y() + math.sin(rad) * laser.start_offset)
+            end_p = QPointF(laser.origin.x() + math.cos(rad) * 4000, 
+                           laser.origin.y() + math.sin(rad) * 4000)
+            
+            glow_c = QColor(laser.color); glow_c.setAlpha(110)
+            painter.setPen(QPen(glow_c, laser.thickness + 15 + laser.flicker, Qt.SolidLine, Qt.RoundCap))
+            painter.drawLine(start_p, end_p)
+            painter.setPen(QPen(QColor(0, 210, 255), laser.thickness + laser.flicker, Qt.SolidLine, Qt.RoundCap))
+            painter.drawLine(start_p, end_p)
+            painter.setPen(QPen(QColor(240, 250, 255), laser.thickness * 0.3, Qt.SolidLine, Qt.RoundCap))
+            painter.drawLine(start_p, end_p)
+            painter.restore()
+
+        # 2. DRAW ALL PARTICLES
         for p in self.particles:
             painter.setOpacity(p.alpha)
             painter.save()
@@ -138,13 +214,48 @@ class VFXManager(QWidget):
 
             if p.p_type == 'blood':
                 painter.setBrush(QColor(150, 0, 0)); painter.setPen(Qt.NoPen)
-                s = p.size
-                painter.drawRect(QRectF(-s/2, -s/2, s, s))
-            elif p.p_type == 'block':
-                painter.setBrush(QColor(255, 255, 0)); painter.setPen(Qt.NoPen)
-                s = p.size
-                painter.drawRect(QRectF(-s/2, -s/2, s, s))
+                s = p.size; painter.drawRect(QRectF(-s/2, -s/2, s, s))
+            elif p.p_type == 'block' or p.p_type == 'laser_square':
+                color = QColor(0, 180, 255) if p.p_type == 'laser_square' else QColor(255, 255, 0)
+                painter.setBrush(color); painter.setPen(Qt.NoPen)
+                s = p.size; painter.drawRect(QRectF(-s/2, -s/2, s, s))
             else:
                 w, h = p.pixmap.width() * p.scale, p.pixmap.height() * p.scale
                 painter.drawPixmap(QRectF(-w/2, -h/2, w, h), p.pixmap, QRectF(p.pixmap.rect()))
             painter.restore()
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    vfx_manager = VFXManager()
+    
+    pivot_x, pivot_y = 600, 400
+    is_on = True
+
+    def toggle_laser():
+        global is_on
+        if is_on:
+            vfx_manager.remove_laser("test_beam")
+            print("Turning off...")
+        else:
+            print("Turning on...")
+        is_on = not is_on
+
+    # Timer to move the laser
+    test_timer = QTimer()
+    def update_test():
+        if is_on:
+            from PyQt5.QtGui import QCursor
+            mouse = QCursor.pos()
+            dx, dy = mouse.x() - pivot_x, mouse.y() - pivot_y
+            angle = math.degrees(math.atan2(dy, dx))
+            vfx_manager.set_laser("test_beam", pivot_x, pivot_y, angle, offset=70)
+        
+    test_timer.timeout.connect(update_test)
+    test_timer.start(16)
+
+    # Timer to toggle on/off every 3 seconds to test fades
+    toggle_timer = QTimer()
+    toggle_timer.timeout.connect(toggle_laser)
+    toggle_timer.start(3000)
+
+    sys.exit(app.exec_())

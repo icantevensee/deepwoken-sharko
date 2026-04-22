@@ -7,7 +7,7 @@ import pygame
 import math
 import time
 from pynput import keyboard, mouse
-from PIL import Image, ImageDraw, ImageFont, ImageTk
+from PIL import Image, ImageDraw, ImageFont, ImageTk, ImageOps, ImageFilter
 import sys
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QPixmap, QPainter, QImage
@@ -246,6 +246,12 @@ class Sharko(SharkoConstants):
             'jump4': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump4.png')),
             'idle1': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'idle1.png'))
         }
+        self.pivot_images = {
+            'Pivot_Body': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Body.png')).convert("RGBA"),
+            'Pivot_Face': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Face.png')).convert("RGBA"),
+            'Pivot_Corals': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Corals.png')).convert("RGBA")
+        }
+
 
 
 
@@ -284,6 +290,117 @@ class Sharko(SharkoConstants):
             window.geometry(f'+{new_x}+{window.geometry().split('+')[-1]}')
             window.after(FRAME_DELAY_MS, step_move, current_step + 1, current_x + step_dx)
         window.after(FRAME_DELAY_MS, step_move, 0, start_x)
+
+
+
+    def Lazer(self, duration_ms, on_complete=None):
+
+
+
+        start_time = time.time()
+        body_width = self.pivot_images['Pivot_Body'].width
+        body_height = self.pivot_images['Pivot_Body'].height
+        center_p = (body_width // 2, body_height // 2)
+        offset_x, offset_y = 0,0
+        if self.CurrentDirection == "Right":
+            offset_x = 357-body_width
+            offset_y = 342-body_height
+            self.window.geometry(f'+{int(self.window.geometry().split('+')[-2])+offset_x}+{int(self.window.geometry().split('+')[-1])+offset_y}')
+        else:
+            offset_y = 342-body_height
+            self.window.geometry(f'+{int(self.window.geometry().split('+')[-2])+offset_x}+{int(self.window.geometry().split('+')[-1])+offset_y}')
+        def update_lazer():
+            elapsed = (time.time() - start_time) * 1000
+            
+            if elapsed < duration_ms:
+                mouse_x, mouse_y = win32api.GetCursorPos()
+                geom_parts = self.window.geometry().split('+')
+                window_x, window_y = int(geom_parts[-2]), int(geom_parts[-1])
+                
+                screen_center_x = window_x + center_p[0]
+                screen_center_y = window_y + center_p[1]
+                
+
+
+                lazer_dir = "Left" if mouse_x < screen_center_x else "Right"
+
+
+                def get_dir_img(name):
+                    img = self.pivot_images[name]
+                    return  img.transpose(Image.FLIP_LEFT_RIGHT) if lazer_dir == "Right" else img
+
+                body = get_dir_img('Pivot_Body')
+                face = get_dir_img('Pivot_Face')
+                corals = get_dir_img('Pivot_Corals')
+
+                rel_x = mouse_x - screen_center_x
+                rel_y = mouse_y - screen_center_y
+                
+                dirconst = -1 if lazer_dir == "Left" else 1
+                calc_x = dirconst*rel_x
+                angle_rad = math.atan2(rel_y, calc_x)
+                angle_deg = math.degrees(angle_rad)
+                angle_deg = dirconst*angle_deg
+
+                norm_angle = ((angle_deg + 180) % 360 - 180)*dirconst
+                face_angle = max(min(norm_angle, 16), -60)
+                overflow_angle = (norm_angle - face_angle)*dirconst
+                face_angle = face_angle*dirconst
+                rot_dir = -1 
+
+                rad = math.radians(face_angle)
+                local_offset_x = 10 * dirconst
+                local_offset_y = 25
+                rotated_offset_x = local_offset_x * math.cos(rad) - local_offset_y * math.sin(rad)
+                rotated_offset_y = local_offset_x * math.sin(rad) + local_offset_y * math.cos(rad)
+
+                pivot_x = screen_center_x + rotated_offset_x
+                pivot_y = screen_center_y + rotated_offset_y
+                mouse_x, mouse_y = win32api.GetCursorPos()
+                dx, dy = mouse_x - pivot_x, mouse_y - pivot_y
+                angle = math.degrees(math.atan2(dy, dx))
+                self.vfx.set_laser("Sharko_Lazer", pivot_x, pivot_y, angle, offset=70)
+
+                rotated_face = face.rotate(
+                    rot_dir * face_angle, 
+                    center=center_p, 
+                    resample=Image.BICUBIC, 
+                    fillcolor=(0,0,0,0)
+                )
+                
+                f_alpha = rotated_face.split()[3]
+                clean_mask = f_alpha.point(lambda p: 255 if p > 245 else 0)
+                rotated_face.putalpha(clean_mask)
+
+                combined = Image.new("RGBA", (357, 342), (0, 0, 0, 0))
+                combined.paste(body, (0, 0), body)
+                combined.paste(rotated_face, (0, 0), rotated_face)
+                combined.paste(corals, (0, 0), corals)
+
+                if overflow_angle != 0:
+                    combined = combined.rotate(
+                        rot_dir * overflow_angle, 
+                        center=center_p, 
+                        resample=Image.BICUBIC, 
+                        fillcolor=(0,0,0,0)
+                    )
+                
+                final_img = ImageTk.PhotoImage(combined)
+                self.label.image = final_img
+                self.label.configure(image=final_img)
+                
+                self.window.after(16, update_lazer)
+            else:
+                self.vfx.remove_laser("Sharko_Lazer")
+                self.window.geometry(f'+{int(self.window.geometry().split('+')[-2])-offset_x}+{int(self.window.geometry().split('+')[-1])-offset_y}')
+                idle_img = self.jump_images['idle1']
+                self.label.image = idle_img
+                self.label.configure(image=idle_img)
+                if on_complete: on_complete()
+        update_lazer()
+            
+
+
 
     def JumpAndHit(self,jump_peak,shortcut,speed,on_complete=None):
         peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
@@ -795,7 +912,6 @@ class Sharko(SharkoConstants):
                 # Only initialize on first press, not on key repeat
                 current_time = time.time()
                 if self.parry_press_time == 0 and current_time - self.last_parry_block_time >= self.parry_block_cooldown:
-                    print("parryinit")
                     self.last_parry_block_time = current_time
                     # Cancel any pending callback from previous key press
                     if self.block_transition_callback:
@@ -1542,6 +1658,7 @@ class Sharko(SharkoConstants):
         
         #self.Jump([random.randint(350, screen_w - 350), work_area_height - 343], 1)
         self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
+        #self.Lazer(10000,on_complete=schedule_next_attack)
 
 
     def sounds(self, sound_file):
