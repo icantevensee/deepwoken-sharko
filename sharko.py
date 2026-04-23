@@ -114,7 +114,7 @@ class Sharko(SharkoConstants):
         self.load_images(image_path, talking_path, greeting_path, removal_path)
         self.create_gui()
         self.animate()
-        self.sounds(self.sound_file)
+        self.sounds(pygame.mixer.Sound(self.sound_file))
         self.add_talking_sentences(self.IntroLine.strip(),'greeting',False)
         self.window.after(self.GREETING_ANIMATION_DELAY, self.idle_state)
         self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND, self.ANSWER_SOUND, self.BLOCK_ATTEMPT_SOUND, self.PARRY_SOUND, self.BLOCK_SOUND,self.HIT_SOUND]
@@ -773,7 +773,7 @@ class Sharko(SharkoConstants):
             Currentframe = Currentframe + 1
             FF = True
         if Sound != "None" and FF == True:
-            Soundfile = self.sound_paths[Sound]
+            Soundfile = self.sounds_group[Sound]
             self.sounds(Soundfile)
         self.label.configure(image=Image)
         self.label.image = Image
@@ -817,14 +817,12 @@ class Sharko(SharkoConstants):
         if x >= x_off and x <= x_off + 255 and y >= 96 and y <= 126:
             answer_text = self._question_answers[0] if self._question_answers else None
             if answer_text:
-                sound_file = self.ANSWER_SOUND
-                self.sounds(sound_file)
+                self.sounds(self.sounds_group[5])
                 self._display_answer(answer_text)
         elif x >= x_off and x <= x_off + 255 and y >= 126 and y <= 163:
             answer_text = self._question_answers[1] if self._question_answers else None
             if answer_text:
-                sound_file = self.ANSWER_SOUND
-                self.sounds(sound_file)
+                self.sounds(self.sounds_group[5])
                 self._display_answer(answer_text)
 
     def _display_answer(self, answer_text):
@@ -946,7 +944,7 @@ class Sharko(SharkoConstants):
                             # Extend parry window to include block window
                             self.parry_active_until = self.block_active_until
                             try:
-                                self.sounds(self.BLOCK_ATTEMPT_SOUND)
+                                self.sounds(self.sounds_group[5])
                             except Exception as e:
                                 print(f"Error playing block attempt sound: {e}")
                     
@@ -994,8 +992,7 @@ class Sharko(SharkoConstants):
                 self.add_new_question(Line)
                 self.new_state('talking')
 
-            sound_file = self.START_TALKING_SOUND
-            self.sounds(sound_file)
+            self.sounds(self.sounds_group[1])
         try:
             if getattr(self, '_idle_after_id', None) is not None:
                 self.window.after_cancel(self._idle_after_id)
@@ -1011,8 +1008,7 @@ class Sharko(SharkoConstants):
             pass
         if self.current_state == 'talking' or self.current_state == 'cutscene' and self.CutsceneIsPlaying == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.Moviemode == False or self.current_state == 'MovieNG' and self.Moviemode == False or self.current_state == 'Limbo' or self.current_state == 'fight' and self.FightModeIsOn == False:
             if not self.current_state == 'walking' and not self.current_state == 'cutscene' and not self.current_state == 'Limbo':
-                sound_file = self.END_TALKING_SOUND
-                self.sounds(sound_file)
+                self.sounds(self.sounds_group[0])
             self.new_state('idle')
             self.clear_talking('talking')
             if time.time()-self.last_input_time > self.INACTIVE_TIME_REQUIREMENT and self.Quiet == False:
@@ -1345,7 +1341,7 @@ class Sharko(SharkoConstants):
             if time_held >= self.parry_window:
                 self.last_parry_block_time = 0
                 try:
-                    self.sounds(self.BLOCK_SOUND)
+                    self.sounds(self.sounds_group[7])
                 except Exception as e:
                     print(f"Error playing block sound: {e}")
                 if self.vfx:
@@ -1353,7 +1349,7 @@ class Sharko(SharkoConstants):
             else:
                 self.last_parry_block_time = 0
                 try:
-                    self.sounds(self.PARRY_SOUND)
+                    self.sounds(self.sounds_group[6])
                 except Exception as e:
                     print(f"Error playing parry sound: {e}")
                 if self.vfx:
@@ -1391,7 +1387,7 @@ class Sharko(SharkoConstants):
             self.vfx.play_blood(mouse_x, mouse_y)
         try:
             # Try to play a hit/damage sound if it exists
-            self.sounds(self.HIT_SOUND)
+            self.sounds(self.sounds_group[8])
         except Exception as e:
             pass
 
@@ -1670,25 +1666,15 @@ class Sharko(SharkoConstants):
         self.Lazer(10000,on_complete=schedule_next_attack)
 
 
-    def sounds(self, sound_file):
+    def sounds(self, sound_object):
         pygame.mixer.init()
-        pygame.mixer.music.load(sound_file)
         if self.sound_enabled:
-            pygame.mixer.music.set_volume(1.0)
-        else:
-            pygame.mixer.music.set_volume(0.0)
-        pygame.mixer.music.play()
+            sound_object.play()        
 
     
     def sounds_logics(self):
         """Toggle sound on/off"""
         self.sound_enabled = not self.sound_enabled
-        if not self.sound_enabled:
-            for sound in self.sounds_group:
-                sound.set_volume(0.0)  
-        else:
-            for sound in self.sounds_group:
-                sound.set_volume(1.0)
 
 
 # Initialize and run
