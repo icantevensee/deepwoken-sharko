@@ -43,7 +43,6 @@ except Exception:
     pass
 
 class Sharko(SharkoConstants):
-    """Main Sharko character class"""
     thrown_icons = set()
 
 
@@ -309,11 +308,11 @@ class Sharko(SharkoConstants):
         else:
             offset_y = 342-body_height
             self.window.geometry(f'+{int(self.window.geometry().split('+')[-2])+offset_x}+{int(self.window.geometry().split('+')[-1])+offset_y}')
-        def update_lazer():
+        frame1db = False
+        Indicator_Length = 0.5*1000
+        def update_lazer(frame1db,lastangle=0,damagetimer = 0):
             elapsed = (time.time() - start_time) * 1000
-            
             if elapsed < duration_ms:
-                mouse_x, mouse_y = win32api.GetCursorPos()
                 geom_parts = self.window.geometry().split('+')
                 window_x, window_y = int(geom_parts[-2]), int(geom_parts[-1])
                 
@@ -321,6 +320,7 @@ class Sharko(SharkoConstants):
                 screen_center_y = window_y + center_p[1]
                 
 
+                mouse_x, mouse_y = win32api.GetCursorPos()
 
                 lazer_dir = "Left" if mouse_x < screen_center_x else "Right"
 
@@ -343,14 +343,17 @@ class Sharko(SharkoConstants):
                 angle_deg = dirconst*angle_deg
 
                 norm_angle = ((angle_deg + 180) % 360 - 180)*dirconst
+                if elapsed < Indicator_Length:
+                    norm_angle = lastangle + 0.2 * (norm_angle - lastangle)
+                    lastangle = norm_angle
                 face_angle = max(min(norm_angle, 16), -60)
                 overflow_angle = (norm_angle - face_angle)*dirconst
                 face_angle = face_angle*dirconst
                 rot_dir = -1 
 
-                rad = math.radians(face_angle)
-                local_offset_x = 10 * dirconst
-                local_offset_y = 25
+                rad = math.radians(norm_angle*dirconst)
+                local_offset_x = 80 * dirconst
+                local_offset_y = 15
                 rotated_offset_x = local_offset_x * math.cos(rad) - local_offset_y * math.sin(rad)
                 rotated_offset_y = local_offset_x * math.sin(rad) + local_offset_y * math.cos(rad)
 
@@ -359,7 +362,15 @@ class Sharko(SharkoConstants):
                 mouse_x, mouse_y = win32api.GetCursorPos()
                 dx, dy = mouse_x - pivot_x, mouse_y - pivot_y
                 angle = math.degrees(math.atan2(dy, dx))
-                self.vfx.set_laser("Sharko_Lazer", pivot_x, pivot_y, angle, offset=70)
+                if frame1db == False:
+                    self.vfx.play_star_pop(pivot_x, pivot_y, count=1)
+                    frame1db = True
+                if elapsed > Indicator_Length:
+                    self.vfx.set_laser("Sharko_Lazer", pivot_x, pivot_y, angle, offset=0)
+                    damagetimer = damagetimer+1
+                    if damagetimer >= 5:
+                        self.damage()
+                        damagetimer = 0
 
                 rotated_face = face.rotate(
                     rot_dir * face_angle, 
@@ -389,7 +400,7 @@ class Sharko(SharkoConstants):
                 self.label.image = final_img
                 self.label.configure(image=final_img)
                 
-                self.window.after(16, update_lazer)
+                self.window.after(16, lambda: update_lazer(frame1db,lastangle,damagetimer))
             else:
                 self.vfx.remove_laser("Sharko_Lazer")
                 self.window.geometry(f'+{int(self.window.geometry().split('+')[-2])-offset_x}+{int(self.window.geometry().split('+')[-1])-offset_y}')
@@ -397,7 +408,7 @@ class Sharko(SharkoConstants):
                 self.label.image = idle_img
                 self.label.configure(image=idle_img)
                 if on_complete: on_complete()
-        update_lazer()
+        update_lazer(frame1db)
             
 
 
@@ -1332,7 +1343,6 @@ class Sharko(SharkoConstants):
             time_held = current_time - self.parry_press_time if self.f_key_held else 0
             # Block if held >= 0.3s, otherwise parry
             if time_held >= self.parry_window:
-                print("Blocked! Attack negated.")
                 self.last_parry_block_time = 0
                 try:
                     self.sounds(self.BLOCK_SOUND)
@@ -1341,7 +1351,6 @@ class Sharko(SharkoConstants):
                 if self.vfx:
                     self.vfx.play_block(mouse_x, mouse_y)
             else:
-                print("Parried! Attack blocked.")
                 self.last_parry_block_time = 0
                 try:
                     self.sounds(self.PARRY_SOUND)
@@ -1352,7 +1361,7 @@ class Sharko(SharkoConstants):
             
             # Clear flags after successful block/parry
             self.blocking = False
-            self.parry_active_until = 0
+            #self.parry_active_until = 0
             self.block_active_until = 0
             # Don't clear f_key_held - user is still physically holding the key
             if self.block_transition_callback:
@@ -1657,8 +1666,8 @@ class Sharko(SharkoConstants):
             self._fight_loop_after_id = self.window.after(2000, self.fight_loop)
         
         #self.Jump([random.randint(350, screen_w - 350), work_area_height - 343], 1)
-        self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
-        #self.Lazer(10000,on_complete=schedule_next_attack)
+        #self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
+        self.Lazer(10000,on_complete=schedule_next_attack)
 
 
     def sounds(self, sound_file):

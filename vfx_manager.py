@@ -76,6 +76,13 @@ class Particle:
             self.size = random.uniform(10, 20)
             self.rotation = random.uniform(0, 360)
             self.rot_speed = random.uniform(-10, 10)
+        elif p_type == 'star':
+            self.scale = 0.0  # Start invisible for the "pop"
+            self.rotation = random.uniform(0, random.uniform(0, 360))
+            self.rot_speed = random.uniform(-15, 15)
+            # Give it a tiny bit of drift
+            self.vel = QPointF(0,0)
+            self.friction = 0.96
 
     def update(self, dt):
         self.elapsed += dt
@@ -98,6 +105,13 @@ class Particle:
         elif self.p_type == 'laser_square':
             self.rotation += self.rot_speed
             self.alpha -= 0.04
+        elif self.p_type == 'star':
+            self.rotation += self.rot_speed
+            if self.elapsed < 0.12:
+                self.scale += 0.08
+            else:
+                self.alpha -= 0.03
+                self.scale -= 0.002
         else: # spark/block
             self.alpha -= 0.05
             
@@ -120,21 +134,29 @@ class VFXManager(QWidget):
 
     def _load_assets(self):
         asset_map = {
-            "sparkle1": "assets/particles/sparkle1.png", "sparkle2": "assets/particles/sparkle2.png",
-            "sparkle3": "assets/particles/sparkle3.png", "spark": "assets/particles/spark.png",
-            "ring": "assets/particles/ring.png", "ringportion": "assets/particles/ringportion.png"
+            "sparkle1": "assets/particles/sparkle1.png", 
+            "sparkle2": "assets/particles/sparkle2.png",
+            "sparkle3": "assets/particles/sparkle3.png", 
+            "spark": "assets/particles/spark.png",
+            "ring": "assets/particles/ring.png", 
+            "ringportion": "assets/particles/ringportion.png",
+            "star1": "assets/particles/star1.png"
         }
         for key, rel_path in asset_map.items():
             full_path = os.path.join(self.script_dir, rel_path)
             if os.path.exists(full_path):
                 img = QPixmap(full_path)
-                tinted = QPixmap(img.size()); tinted.fill(Qt.transparent)
-                p = QPainter(tinted); p.drawPixmap(0, 0, img)
+                tinted = QPixmap(img.size())
+                tinted.fill(Qt.transparent)
+                p = QPainter(tinted)
+                p.drawPixmap(0, 0, img)
                 p.setCompositionMode(QPainter.CompositionMode_SourceAtop)
-                p.fillRect(tinted.rect(), QColor(255, 255, 0)); p.end()
+                if not key.startswith("star1"):
+                    p.fillRect(tinted.rect(), QColor(255, 220, 0)) 
+                p.end()
                 self.textures[key] = tinted
 
-    def set_laser(self, laser_id, x, y, angle, color=QColor(0, 150, 255), offset=60):
+    def set_laser(self, laser_id, x, y, angle, color=QColor(0, 150, 255), offset=0):
         if laser_id not in self.lasers:
             self.lasers[laser_id] = Laser(x, y, angle, color, start_offset=offset)
         else:
@@ -145,6 +167,11 @@ class VFXManager(QWidget):
     def remove_laser(self, laser_id):
         if laser_id in self.lasers: self.lasers[laser_id].state = "fading_out"
 
+    def play_star_pop(self, x, y, count=1):
+        if "star1" in self.textures:
+            for _ in range(count):
+                self.particles.append(Particle(x, y, 'star', self.textures["star1"]))
+
     def play_parry(self, x, y):
         available_sparkles = [k for k in ["sparkle1", "sparkle2", "sparkle3"] if k in self.textures]
         if len(available_sparkles) >= 2:
@@ -153,7 +180,7 @@ class VFXManager(QWidget):
         if "ring" in self.textures:
             self.particles.append(Particle(x, y, 'ring', self.textures[random.choice(["ring", "ringportion"])]))
         if "spark" in self.textures:
-            for _ in range(35): self.particles.append(Particle(x, y, 'spark', self.textures["spark"]))
+            for _ in range(10): self.particles.append(Particle(x, y, 'spark', self.textures["spark"]))
 
     def play_block(self, x, y):
         for _ in range(20): self.particles.append(Particle(x, y, 'block'))
@@ -230,7 +257,6 @@ if __name__ == "__main__":
     
     pivot_x, pivot_y = 600, 400
     is_on = True
-
     def toggle_laser():
         global is_on
         if is_on:
@@ -239,16 +265,17 @@ if __name__ == "__main__":
         else:
             print("Turning on...")
         is_on = not is_on
-
+    from PyQt5.QtGui import QCursor
+    mouse = QCursor.pos()
+    vfx_manager.play_star_pop(mouse.x(), mouse.y(), count=1)
     # Timer to move the laser
     test_timer = QTimer()
     def update_test():
         if is_on:
-            from PyQt5.QtGui import QCursor
-            mouse = QCursor.pos()
+
             dx, dy = mouse.x() - pivot_x, mouse.y() - pivot_y
             angle = math.degrees(math.atan2(dy, dx))
-            vfx_manager.set_laser("test_beam", pivot_x, pivot_y, angle, offset=70)
+            vfx_manager.set_laser("test_beam", pivot_x, pivot_y, angle, offset=0)
         
     test_timer.timeout.connect(update_test)
     test_timer.start(16)
