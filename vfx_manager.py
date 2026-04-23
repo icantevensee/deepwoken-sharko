@@ -179,14 +179,12 @@ class VFXManager(QWidget):
                 self.particles.append(Particle(x, y, 'sparkle', self.textures[s_key]))
         if "ring" in self.textures:
             self.particles.append(Particle(x, y, 'ring', self.textures[random.choice(["ring", "ringportion"])]))
-        if "spark" in self.textures:
-            for _ in range(10): self.particles.append(Particle(x, y, 'spark', self.textures["spark"]))
 
     def play_block(self, x, y):
-        for _ in range(20): self.particles.append(Particle(x, y, 'block'))
+        for _ in range(7): self.particles.append(Particle(x, y, 'block'))
 
     def play_blood(self, x, y):
-        for _ in range(40): self.particles.append(Particle(x, y, 'blood'))
+        for _ in range(7): self.particles.append(Particle(x, y, 'blood'))
 
     def update_vfx(self):
         self.particles = [p for p in self.particles if p.update(0.016)]

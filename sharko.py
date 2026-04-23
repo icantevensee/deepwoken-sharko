@@ -1662,8 +1662,8 @@ class Sharko(SharkoConstants):
             self._fight_loop_after_id = self.window.after(2000, self.fight_loop)
         
         #self.Jump([random.randint(350, screen_w - 350), work_area_height - 343], 1)
-        #self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
-        self.Lazer(10000,on_complete=schedule_next_attack)
+        self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
+        #self.Lazer(10000,on_complete=schedule_next_attack)
 
 
     def sounds(self, sound_object):
