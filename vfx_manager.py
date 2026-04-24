@@ -3,7 +3,7 @@ import os
 import random
 import math
 from PyQt5.QtWidgets import QApplication,QWidget
-from PyQt5.QtCore import Qt, QTimer, QRectF, QPointF
+from PyQt5.QtCore import Qt, QTimer,QRect, QRectF, QPointF, QVariantAnimation, QEasingCurve
 from PyQt5.QtGui import QPainter, QPixmap, QColor, QPen
 
 class Laser:
@@ -30,6 +30,8 @@ class Laser:
         return True
 
 class Particle:
+    __slots__ = ['pos', 'pixmap', 'p_type', 'alpha', 'elapsed', 'vel', 
+                 'friction', 'rotation', 'rot_speed', 'scale', 'size', 'gravity']
     def __init__(self, x, y, p_type, pixmap=None):
         self.pos = QPointF(float(x), float(y))
         self.pixmap = pixmap
@@ -77,10 +79,9 @@ class Particle:
             self.rotation = random.uniform(0, 360)
             self.rot_speed = random.uniform(-10, 10)
         elif p_type == 'star':
-            self.scale = 0.0  # Start invisible for the "pop"
+            self.scale = 0.0
             self.rotation = random.uniform(0, random.uniform(0, 360))
             self.rot_speed = random.uniform(-15, 15)
-            # Give it a tiny bit of drift
             self.vel = QPointF(0,0)
             self.friction = 0.96
 
@@ -112,7 +113,7 @@ class Particle:
             else:
                 self.alpha -= 0.03
                 self.scale -= 0.002
-        else: # spark/block
+        else:
             self.alpha -= 0.05
             
         return self.alpha > 0
@@ -194,8 +195,7 @@ class VFXManager(QWidget):
                 to_remove.append(lid)
                 continue
             l.flicker = random.uniform(-2.5, 2.5)
-            # Only spawn trailing squares if laser is visible enough
-            if l.alpha > 0.4 and random.random() > 0.15:
+            if l.alpha > 0.4 and random.random() > 0.5:
                 rad = math.radians(l.angle)
                 dist = random.uniform(l.start_offset, 2000)
                 px, py = l.origin.x() + math.cos(rad) * dist, l.origin.y() + math.sin(rad) * dist
@@ -211,7 +211,6 @@ class VFXManager(QWidget):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setCompositionMode(QPainter.CompositionMode_Plus)
 
-        # 1. DRAW LASERS
         for laser in self.lasers.values():
             painter.save()
             painter.setOpacity(laser.alpha)
@@ -230,7 +229,6 @@ class VFXManager(QWidget):
             painter.drawLine(start_p, end_p)
             painter.restore()
 
-        # 2. DRAW ALL PARTICLES
         for p in self.particles:
             painter.setOpacity(p.alpha)
             painter.save()
@@ -266,7 +264,6 @@ if __name__ == "__main__":
     from PyQt5.QtGui import QCursor
     mouse = QCursor.pos()
     vfx_manager.play_star_pop(mouse.x(), mouse.y(), count=1)
-    # Timer to move the laser
     test_timer = QTimer()
     def update_test():
         if is_on:
@@ -276,11 +273,96 @@ if __name__ == "__main__":
             vfx_manager.set_laser("test_beam", pivot_x, pivot_y, angle, offset=0)
         
     test_timer.timeout.connect(update_test)
-    test_timer.start(16)
+    test_timer.start(20)
 
-    # Timer to toggle on/off every 3 seconds to test fades
     toggle_timer = QTimer()
     toggle_timer.timeout.connect(toggle_laser)
     toggle_timer.start(3000)
 
     sys.exit(app.exec_())
+
+
+class WarningInstance:
+    """Helper class to track individual warning states."""
+    def __init__(self, rect, duration, parent_update_func):
+        self.rect = rect
+        self.opacity = 0
+        self.is_fading_out = False
+        
+        self.anim = QVariantAnimation()
+        self.anim.setDuration(300)
+        self.anim.setStartValue(0)
+        self.anim.setEndValue(180)
+        self.anim.setEasingCurve(QEasingCurve.InOutSine)
+        
+        self.anim.valueChanged.connect(self.update_val)
+        self.update_callback = parent_update_func
+        
+        self.anim.finished.connect(self.loop_logic)
+        self.anim.start()
+
+        QTimer.singleShot(duration * 1000, self.start_exit)
+
+    def update_val(self, val):
+        self.opacity = val
+        self.update_callback()
+
+    def loop_logic(self):
+        if self.is_fading_out and self.anim.direction() == QVariantAnimation.Backward:
+            self.opacity = -1
+            return
+            
+        new_dir = (QVariantAnimation.Backward if self.anim.direction() == QVariantAnimation.Forward 
+                   else QVariantAnimation.Forward)
+        self.anim.setDirection(new_dir)
+        self.anim.start()
+
+    def start_exit(self):
+        self.is_fading_out = True
+
+class MultiWarningOverlay(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.showFullScreen()
+
+        self.active_warnings = []
+
+    def trigger_warning(self, width=400, height=250, duration_sec=4,x=0,y=0):
+        rect = QRect(x, y, width, height)
+
+        new_warning = WarningInstance(rect, duration_sec, self.update)
+        self.active_warnings.append(new_warning)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setCompositionMode(QPainter.CompositionMode_Source)
+
+        for i in range(len(self.active_warnings) - 1, -1, -1):
+            w_inst = self.active_warnings[i]
+            
+            if w_inst.opacity == -1:
+                self.active_warnings.pop(i)
+                continue
+
+            color = QColor(255, 0, 0, w_inst.opacity)
+            rect = w_inst.rect
+            x, y, w, h = rect.getRect()
+            
+            # Draw Stripes
+            painter.save()
+            painter.setClipRect(rect)
+            painter.setPen(QPen(color, 5, Qt.SolidLine, Qt.FlatCap))
+            for j in range(-h, w + h, 25):
+                painter.drawLine(x + j, y, x + j + h, y + h)
+            painter.restore()
+
+            # Draw Border
+            painter.setPen(QPen(color, 4, Qt.SolidLine, Qt.FlatCap, Qt.MiterJoin))
+            painter.drawRect(rect)
+    def deinitialize(self):
+        for w in self.active_warnings:
+            del w
+        self.active_warnings.clear()

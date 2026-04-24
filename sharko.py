@@ -3,6 +3,7 @@ import ctypes
 import tkinter as tk
 import random
 import os
+import psutil
 import pygame
 import math
 import time
@@ -13,7 +14,7 @@ from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QPixmap, QPainter, QImage
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
-from vfx_manager import VFXManager
+from vfx_manager import VFXManager, MultiWarningOverlay
 import threading
 import pythoncom
 from win32com.shell import shell, shellcon
@@ -68,37 +69,37 @@ class Sharko(SharkoConstants):
                 file.close()
             except Exception:
                 pass
-        file = open('RemovalLines+IntroLine.txt', 'r', encoding='utf-8')
-        removalandintrolines = file.readlines()
-        self.RemovalLines = []
+        file = open('removal_lines+intro_line.txt', 'r', encoding='utf-8')
+        removal_intro_lines = file.readlines()
+        self.removal_lines = []
 
-        for index, line in enumerate(removalandintrolines):
+        for index, line in enumerate(removal_intro_lines):
             decoded = self._decode_escapes(line.strip())
             if index > 2:
-                self.RemovalLines.append(decoded)
+                self.removal_lines.append(decoded)
             elif index == 1:
-                self.IntroLine = decoded
+                self.intro_line = decoded
         file.close()
 
         file = open('Questions.txt', 'r', encoding='utf-8')
-        removalandintrolines = file.readlines()
+        removal_intro_lines = file.readlines()
         self.Questions = []
-        for index, line in enumerate(removalandintrolines):
+        for index, line in enumerate(removal_intro_lines):
             decoded = self._decode_escapes(line.strip())
-            Current_Question = math.floor(index/5)
-            Current_Line  = index - Current_Question*5
-            if Current_Line == 0:
+            current_question = math.floor(index/5)
+            current_line  = index - current_question*5
+            if current_line == 0:
                 self.Questions.append([])
-            self.Questions[Current_Question].append(decoded)
+            self.Questions[current_question].append(decoded)
         file.close()
 
         self.Quiet = False
-        self.CutsceneIsPlaying = False
-        self.FightModeIsOn = False
-        self.Moviemode = False
+        self.cutscene_active = False
+        self.fight_mode_active = False
+        self.movie_mode_active = False
         self.end = False
-        self.Beingmoved = False
-        self.geomreminder = False
+        self.currently_moving = False
+        self.position_flip_trigger = False
         self.window = tk.Tk()
         self.active_bar = None
         
@@ -106,7 +107,7 @@ class Sharko(SharkoConstants):
         pygame.init()
         self.Screen_x = self.window.winfo_screenwidth()
         self.Screen_y = self.window.winfo_screenheight()
-        self.CurrentDirection = "Right"
+        self.current_facing = "Right"
         self.current_state = 'greeting'
         self.sound_file = self.GREETING_SOUND
         self.frame = 0
@@ -115,13 +116,13 @@ class Sharko(SharkoConstants):
         self.create_gui()
         self.animate()
         self.sounds(pygame.mixer.Sound(self.sound_file))
-        self.add_talking_sentences(self.IntroLine.strip(),'greeting',False)
+        self.add_talking_sentences(self.intro_line.strip(),'greeting',False)
         self.window.after(self.GREETING_ANIMATION_DELAY, self.idle_state)
         self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND, self.ANSWER_SOUND, self.BLOCK_ATTEMPT_SOUND, self.PARRY_SOUND, self.BLOCK_SOUND,self.HIT_SOUND]
         self.sounds_group = [pygame.mixer.Sound(path) for path in self.sound_paths]
         self.Walkspeed = 230 #Pixels per second
         self.walking_enabled = True
-        self.SupressRightClicks = False
+        self.supress_right_clk = False
         
         # Parry and block mechanics
         self.parry_press_time = 0  # when 'f' was pressed
@@ -141,17 +142,18 @@ class Sharko(SharkoConstants):
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
         thickness_vertical = screen_height - work_area_height    
         if thickness_vertical > 0:
-            TaskbarThick = thickness_vertical
+            taskbar_thickness = thickness_vertical
         else:
-            TaskbarThick = 0
+            taskbar_thickness = 0
 
         x = self.Screen_x-357
-        y = self.Screen_y-342-TaskbarThick
+        y = self.Screen_y-342-taskbar_thickness
         self.x = x
         self.y = y
         self.window.geometry(f"+{x}+{y}")
         self.last_input_time = time.time()
 
+        self.process = psutil.Process(os.getpid())
 
         keyboard_listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
         mouse_listener = mouse.Listener(on_move=self.on_click,on_click=self.on_click)
@@ -160,6 +162,11 @@ class Sharko(SharkoConstants):
         mouse_listener.start()
 
         self.window.mainloop()
+
+
+    def log_stats(self):
+        mem_mb = self.process.memory_info().rss / (1024 * 1024)
+        print(f"RAM: {mem_mb:.2f} MB")
 
 
     def _decode_escapes(self, s):
@@ -265,10 +272,10 @@ class Sharko(SharkoConstants):
         num_steps = max(1, duration_ms // FRAME_DELAY_MS)
         step_dx = total_dx / num_steps
         def step_move(current_step, current_x):
-            if self.FightModeIsOn == True:
+            if self.fight_mode_active == True:
                 return
 
-            if self.end == True or self.Beingmoved == True:
+            if self.end == True or self.currently_moving == True:
                 self.ANIMATION_DELAY = ANIMATION_DELAYOrig
                 self.window.after(FRAME_DELAY_MS, self.idle_state)
                 return
@@ -276,7 +283,7 @@ class Sharko(SharkoConstants):
             if current_step >= num_steps:
                 self.ANIMATION_DELAY = ANIMATION_DELAYOrig
                 window.geometry(f'+{target_x}+{window.geometry().split('+')[-1]}')
-                if self.CurrentDirection == "Right" :
+                if self.current_facing == "Right" :
                     self.window.after(FRAME_DELAY_MS, self.rotate_right)
                     self.window.after(FRAME_DELAY_MS+1, self.idle_state)
                 else:
@@ -301,7 +308,7 @@ class Sharko(SharkoConstants):
         body_height = self.pivot_images['Pivot_Body'].height
         center_p = (body_width // 2, body_height // 2)
         offset_x, offset_y = 0,0
-        if self.CurrentDirection == "Right":
+        if self.current_facing == "Right":
             offset_x = 357-body_width
             offset_y = 342-body_height
             self.window.geometry(f'+{int(self.window.geometry().split('+')[-2])+offset_x}+{int(self.window.geometry().split('+')[-1])+offset_y}')
@@ -363,12 +370,12 @@ class Sharko(SharkoConstants):
                 dx, dy = mouse_x - pivot_x, mouse_y - pivot_y
                 angle = math.degrees(math.atan2(dy, dx))
                 if frame1db == False:
-                    self.vfx.play_star_pop(pivot_x, pivot_y, count=1)
+                    self.particles_manager.play_star_pop(pivot_x, pivot_y, count=1)
                     frame1db = True
                 if elapsed > Indicator_Length:
-                    self.vfx.set_laser("Sharko_Lazer", pivot_x, pivot_y, angle, offset=0)
+                    self.particles_manager.set_laser("Sharko_Lazer", pivot_x, pivot_y, angle, offset=0)
                     damagetimer = damagetimer+1
-                    if damagetimer >= 5:
+                    if damagetimer >= 3:
                         self.damage()
                         damagetimer = 0
 
@@ -400,9 +407,9 @@ class Sharko(SharkoConstants):
                 self.label.image = final_img
                 self.label.configure(image=final_img)
                 
-                self.window.after(16, lambda: update_lazer(frame1db,lastangle,damagetimer))
+                self.window.after(30, lambda: update_lazer(frame1db,lastangle,damagetimer))
             else:
-                self.vfx.remove_laser("Sharko_Lazer")
+                self.particles_manager.remove_laser("Sharko_Lazer")
                 self.window.geometry(f'+{int(self.window.geometry().split('+')[-2])-offset_x}+{int(self.window.geometry().split('+')[-1])-offset_y}')
                 idle_img = self.jump_images['idle1']
                 self.label.image = idle_img
@@ -429,10 +436,10 @@ class Sharko(SharkoConstants):
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
         thickness_vertical = screen_height - work_area_height    
         if thickness_vertical > 0:
-            TaskbarThick = thickness_vertical
+            taskbar_thickness = thickness_vertical
         else:
-            TaskbarThick = 0
-        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - 357), self.Screen_y-342-TaskbarThick
+            taskbar_thickness = 0
+        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - 357), self.Screen_y-342-taskbar_thickness
         if end_x - start_x > 0:
             peak_x = peak_x-84
         else:
@@ -449,7 +456,7 @@ class Sharko(SharkoConstants):
         original_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
         ts = np.linspace(0, 1, Steps)
         points = B(ts)
-        hashit = False
+        hit_db = False
         hit_detected = False
         sprite_width = 165
         sprite_height = 165
@@ -467,7 +474,7 @@ class Sharko(SharkoConstants):
         # Cache image dictionaries for performance
         last_image = None  # Track last displayed image to avoid redundant updates
         
-        def Step_move(current_step,hashit,hit_detected,shortcut,original_count,item_name,offset,cached_images):
+        def Step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images):
             nonlocal last_image
             current_x = math.floor(points[current_step-1][0])
             current_y = math.floor(points[current_step-1][1])
@@ -523,7 +530,7 @@ class Sharko(SharkoConstants):
                     hit_detected = True
                     self.damage()
             
-            if hashit == False:
+            if hit_db == False:
                 current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
                 if not DesktopUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
                     original_count = current_count
@@ -536,29 +543,29 @@ class Sharko(SharkoConstants):
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, shortcut, pos)
             
 
-            if current_step >= Steps/2 and hashit == False:
+            if current_step >= Steps/2 and hit_db == False:
                 mouse = win32api.GetCursorPos()
-                hashit = True
+                hit_db = True
                 self.throw_shortcut(shortcut, mouse, speed, item_name)
 
             current_step = current_step + 1
             if current_step< Steps:
-                self.window.after(math.ceil(dt*1000),Step_move,current_step,hashit,hit_detected,shortcut,original_count,item_name,offset,cached_images)
+                self.window.after(math.ceil(dt*1000),Step_move,current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
             else:
                 self.window.geometry(f'+{int(end_x+offset)}+{int(end_y)}')
                 self.label.image = cached_images['idle1']
                 self.label.configure(image=self.label.image)
                 if on_complete:
                     on_complete()
-        Step_move(current_step,hashit,hit_detected,shortcut,original_count,item_name,offset,cached_images)
+        Step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
 
     def Jump(self,jump_end,speed,on_complete=None):
         end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
         dist = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
         screen_height = windll.user32.GetSystemMetrics(1)
         screen_width = windll.user32.GetSystemMetrics(0) 
-        screendiagonal = math.sqrt(screen_height**2+screen_width**2)
-        peak_x, peak_y = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screendiagonal)*0.7)
+        screen_diagonal = math.sqrt(screen_height**2+screen_width**2)
+        peak_x, peak_y = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screen_diagonal)*0.7)
         if end_x - start_x > 0:
             peak_x = peak_x-84
         else:
@@ -571,7 +578,7 @@ class Sharko(SharkoConstants):
         L2 = MathUtils.quadratic_length(P0, P1, P2, n=2000)
         
         T = 0.75*(L2/(speed*1800))**0.4
-        Steps = math.floor(T*60)
+        Steps = math.floor(T*30)
         dt = T/Steps
         ts = np.linspace(0, 1, Steps)
         points = B(ts)
@@ -692,14 +699,14 @@ class Sharko(SharkoConstants):
     def animate(self):
         if self.label.image == None:
             return
-        if self.geomreminder == True:
-            self.geomreminder = False
-            if self.CurrentDirection == "Left":
+        if self.position_flip_trigger == True:
+            self.position_flip_trigger = False
+            if self.current_facing == "Left":
                 self.window.geometry(f'+{0}+{self.window.geometry().split('+')[-1]}')
             else: 
                 self.window.geometry(f'+{self.Screen_x-359}+{self.window.geometry().split('+')[-1]}')
 
-        if self.CutsceneIsPlaying == True or self.FightModeIsOn == True:
+        if self.cutscene_active == True or self.fight_mode_active == True:
             return
         state_images = self.states.get(self.current_state, [])
         if not state_images:
@@ -716,28 +723,28 @@ class Sharko(SharkoConstants):
         self.window.after(self.ANIMATION_DELAY, self.animate)
 
     def play_cutscene(self, cutscenepreset):
-        if self.CutsceneIsPlaying == True:
+        if self.cutscene_active == True:
             return
-        self.CutsceneIsPlaying = True
+        self.cutscene_active = True
         self.new_state('cutscene')
         Cutscene = self.CutscenePresets[cutscenepreset]
         self.PlayCutsceneFrame(Cutscene, 0,cutscenepreset)
 
 
-    def PlayCutsceneFrame(self, Cutscene, Currentframe,cutscenepreset):
+    def PlayCutsceneFrame(self, Cutscene, current_frame,cutscenepreset):
         if cutscenepreset== 'InactiveCutscene':
             if time.time()-self.last_input_time < self.INACTIVE_TIME_REQUIREMENT:
-                if Currentframe <6:
-                    Currentframe = 6 
-                elif Currentframe == len(Cutscene):
-                    self.CutsceneIsPlaying = False
+                if current_frame <6:
+                    current_frame = 6 
+                elif current_frame == len(Cutscene):
+                    self.cutscene_active = False
                     self.Quiet = False
                     self.load_cutscenes()
                     self.idle_state()
                     self.animate()
                     return
-            elif Currentframe == len(Cutscene):
-                self.CutsceneIsPlaying = False
+            elif current_frame == len(Cutscene):
+                self.cutscene_active = False
                 self.Quiet = True
                 self.load_cutscenes()
                 self.idle_state()
@@ -745,8 +752,8 @@ class Sharko(SharkoConstants):
                 return
 
 
-        if Currentframe == len(Cutscene):
-            self.CutsceneIsPlaying = False
+        if current_frame == len(Cutscene):
+            self.cutscene_active = False
             self.load_cutscenes()
             self.idle_state()
             self.animate()
@@ -755,29 +762,29 @@ class Sharko(SharkoConstants):
 
 
         
-        CurrentFrameInfo = Cutscene[Currentframe]
-        if CurrentFrameInfo[0] == "repeat":
-            Image = CurrentFrameInfo[1]
-            Time = CurrentFrameInfo[4]
-            Sound = CurrentFrameInfo[3]
-            CurrentFrameInfo[5] = CurrentFrameInfo[5]-1
-            FF = CurrentFrameInfo[6]
-            CurrentFrameInfo[6] = False
-            CurrentFrameInfo[1], CurrentFrameInfo[2] = CurrentFrameInfo[2], CurrentFrameInfo[1]
-            if CurrentFrameInfo[5] == 0 :
-                Currentframe = Currentframe + 1
+        current_frame_info = Cutscene[current_frame]
+        if current_frame_info[0] == "repeat":
+            Image = current_frame_info[1]
+            Time = current_frame_info[4]
+            Sound = current_frame_info[3]
+            current_frame_info[5] = current_frame_info[5]-1
+            FF = current_frame_info[6]
+            current_frame_info[6] = False
+            current_frame_info[1], current_frame_info[2] = current_frame_info[2], current_frame_info[1]
+            if current_frame_info[5] == 0 :
+                current_frame = current_frame + 1
         else:
-            Image = CurrentFrameInfo[0]
-            Time = CurrentFrameInfo[1]
-            Sound = CurrentFrameInfo[2]
-            Currentframe = Currentframe + 1
+            Image = current_frame_info[0]
+            Time = current_frame_info[1]
+            Sound = current_frame_info[2]
+            current_frame = current_frame + 1
             FF = True
         if Sound != "None" and FF == True:
             Soundfile = self.sounds_group[Sound]
             self.sounds(Soundfile)
         self.label.configure(image=Image)
         self.label.image = Image
-        self.window.after(Time, self.PlayCutsceneFrame,Cutscene,Currentframe,cutscenepreset)
+        self.window.after(Time, self.PlayCutsceneFrame,Cutscene,current_frame,cutscenepreset)
 
 
         
@@ -802,16 +809,16 @@ class Sharko(SharkoConstants):
 
 
     def move1(self, event):
-        if self.FightModeIsOn == True or self.CutsceneIsPlaying == True:
+        if self.fight_mode_active == True or self.cutscene_active == True:
             return
         self.y = event.y
         self.x = event.x
-        self.Beingmoved = True
+        self.currently_moving = True
 
     def _handle_question_click(self, event):
         if not getattr(self, 'question_active', False):
             return
-        x_off = 97 if self.CurrentDirection == "Left" else 9
+        x_off = 97 if self.current_facing == "Left" else 9
         x = event.x
         y = event.y
         if x >= x_off and x <= x_off + 255 and y >= 96 and y <= 126:
@@ -847,11 +854,11 @@ class Sharko(SharkoConstants):
 
     def release(self, event):
         self.y = event.y
-        self.Beingmoved = False
+        self.currently_moving = False
 
 
     def move2(self, event):
-        if self.FightModeIsOn == True or self.CutsceneIsPlaying == True:
+        if self.fight_mode_active == True or self.cutscene_active == True:
             return
         x = self.window.winfo_pointerx() - self.x
         y = self.window.winfo_pointery() - self.y
@@ -862,34 +869,34 @@ class Sharko(SharkoConstants):
         self.current_state = new_state
 
     def MovieOff(self):
-        self.Moviemode = False
+        self.movie_mode_active = False
         self.idle_state()
 
     def MovieOn(self):
-        self.Moviemode = True
+        self.movie_mode_active = True
         self.new_state('MovieG')
     
     def MovieOn1(self):
-        self.Moviemode = True
+        self.movie_mode_active = True
         self.new_state('MovieNG')
 
     def toggle_walking(self):
         self.walking_enabled = not self.walking_enabled
         if not self.walking_enabled and self.current_state == 'walking':
-            self.Beingmoved = True
+            self.currently_moving = True
             try:
                 self.window.after(50, self._stop_walk_cleanup)
             except Exception:
                 self._stop_walk_cleanup()
 
     def _stop_walk_cleanup(self):
-        self.Beingmoved = False
+        self.currently_moving = False
         if self.current_state == 'walking':
             self.new_state('idle')
 
     def flip_side(self):
         try:
-            if self.CurrentDirection == 'Right':
+            if self.current_facing == 'Right':
                 self.rotate_right()
                 try:
                     y = self.window.geometry().split('+')[-1]
@@ -907,7 +914,7 @@ class Sharko(SharkoConstants):
                 self.window.geometry(f'+{right_x}+{y}')
                 self.x = right_x
             self.window.lift()
-            self.geomreminder = True
+            self.position_flip_trigger = True
         except Exception:
             pass
 
@@ -974,7 +981,7 @@ class Sharko(SharkoConstants):
             pass
 
     def on_click(self,x, y, button):
-        if button == mouse.Button.right and self.SupressRightClicks == True:
+        if button == mouse.Button.right and self.supress_right_clk == True:
             mouse.Listener.suppress_event(self)
         self.last_input_time = time.time()
         self.Quiet = False
@@ -1006,7 +1013,7 @@ class Sharko(SharkoConstants):
             self._idle_after_id = None
         except Exception:
             pass
-        if self.current_state == 'talking' or self.current_state == 'cutscene' and self.CutsceneIsPlaying == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.Moviemode == False or self.current_state == 'MovieNG' and self.Moviemode == False or self.current_state == 'Limbo' or self.current_state == 'fight' and self.FightModeIsOn == False:
+        if self.current_state == 'talking' or self.current_state == 'cutscene' and self.cutscene_active == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.movie_mode_active == False or self.current_state == 'MovieNG' and self.movie_mode_active == False or self.current_state == 'Limbo' or self.current_state == 'fight' and self.fight_mode_active == False:
             if not self.current_state == 'walking' and not self.current_state == 'cutscene' and not self.current_state == 'Limbo':
                 self.sounds(self.sounds_group[0])
             self.new_state('idle')
@@ -1016,7 +1023,7 @@ class Sharko(SharkoConstants):
                 self.play_cutscene('InactiveCutscene')
             else:
                 random_integer = random.randint(1, 20)
-                if random_integer > 3 and self.Quiet == False or self.Beingmoved == True or self.walking_enabled == False and self.Quiet == False:
+                if random_integer > 3 and self.Quiet == False or self.currently_moving == True or self.walking_enabled == False and self.Quiet == False:
                     self.window.after(self.IDLE_ANIMATION_DELAY, self.talking_state)
                 else:
                     if self.walking_enabled == False and self.Quiet == True:
@@ -1035,7 +1042,7 @@ class Sharko(SharkoConstants):
             self.frame = (self.frame + 1) % len(state_images)
             self.label.configure(image=state_images[self.frame])
             self.label.image = state_images[self.frame]
-            if self.CurrentDirection == "Right":
+            if self.current_facing == "Right":
                 self.move_window_x(self.window, -179)
             else:
                 self.move_window_x(self.window, self.Screen_x-179)
@@ -1160,7 +1167,7 @@ class Sharko(SharkoConstants):
 
             def composite_three(base_img):
                 b = base_img.copy()
-                if self.CurrentDirection == "Left":
+                if self.current_facing == "Left":
                     x = 97
                 else:
                     x = 9
@@ -1206,7 +1213,7 @@ class Sharko(SharkoConstants):
         def composite_on_base(base_img):
             b = base_img.copy()
             bw, bh = b.size
-            if self.CurrentDirection == "Left":
+            if self.current_facing == "Left":
                 x = 97
             else:
                 x = 9
@@ -1231,7 +1238,7 @@ class Sharko(SharkoConstants):
 
     
     def add_removal_sentences(self):
-        self.add_talking_sentences(random.choice(self.RemovalLines).strip(),'removal',False)
+        self.add_talking_sentences(random.choice(self.removal_lines).strip(),'removal',False)
 
 
     def close_command(self):
@@ -1261,7 +1268,7 @@ class Sharko(SharkoConstants):
                 self.setWindowFlag(Qt.Tool)
                 self.setWindowFlag(Qt.FramelessWindowHint)
                 self.tiles = []
-                self.vfx = []
+                self.particles_manager = []
                 self.firstime = True
                 self.timer = QTimer(self)
                 self.timer.timeout.connect(self.animate)
@@ -1344,16 +1351,16 @@ class Sharko(SharkoConstants):
                     self.sounds(self.sounds_group[7])
                 except Exception as e:
                     print(f"Error playing block sound: {e}")
-                if self.vfx:
-                    self.vfx.play_block(mouse_x, mouse_y)
+                if self.particles_manager:
+                    self.particles_manager.play_block(mouse_x, mouse_y)
             else:
                 self.last_parry_block_time = 0
                 try:
                     self.sounds(self.sounds_group[6])
                 except Exception as e:
                     print(f"Error playing parry sound: {e}")
-                if self.vfx:
-                    self.vfx.play_parry(mouse_x, mouse_y)
+                if self.particles_manager:
+                    self.particles_manager.play_parry(mouse_x, mouse_y)
             
             # Clear flags after successful block/parry
             self.blocking = False
@@ -1381,10 +1388,9 @@ class Sharko(SharkoConstants):
                     pass
                 self.block_transition_callback = None
         
-        print("Hit! Damage dealt.")
         # Play blood effect and hit sound
-        if self.vfx:
-            self.vfx.play_blood(mouse_x, mouse_y)
+        if self.particles_manager:
+            self.particles_manager.play_blood(mouse_x, mouse_y)
         try:
             # Try to play a hit/damage sound if it exists
             self.sounds(self.sounds_group[8])
@@ -1566,9 +1572,9 @@ class Sharko(SharkoConstants):
         new_greeting_path = "assets/mirror_sentences/greeting/"
         new_removal_path = "assets/mirror_sentences/removal/"
         self.load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
-        self.CurrentDirection = "Left"
+        self.current_facing = "Left"
         self.x = 0
-        self.geomreminder = True
+        self.position_flip_trigger = True
         try:
             self.new_state('Limbo')
         except Exception:
@@ -1581,10 +1587,10 @@ class Sharko(SharkoConstants):
         new_greeting_path = "assets/sentences/greeting/"
         new_removal_path = "assets/sentences/removal/"
         self.load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
-        self.CurrentDirection = "Right"
+        self.current_facing = "Right"
         self.x = self.Screen_x-359
 
-        self.geomreminder = True
+        self.position_flip_trigger = True
         try:
             self.new_state('Limbo')
         except Exception:
@@ -1593,24 +1599,27 @@ class Sharko(SharkoConstants):
 
     def toggle_fight_mode(self):
         if self.current_state != 'fight':
-            self.FightModeIsOn = True
-            self.SupressRightClicks = True
+            self.fight_mode_active = True
+            self.supress_right_clk = True
             if not self.active_bar:
                 self.active_bar = ScalableHealthBar()
                 screen_w = ctypes.windll.user32.GetSystemMetrics(0)
                 self.active_bar.resize(screen_w // 2, 200)
                 self.active_bar.slide_in()
                 print("Boss Bar Created from external file.")
-                self.vfx = VFXManager()
-                self.vfx.play_block(500, 500)
-                self.vfx.play_parry(600, 500)
+                self.particles_manager = VFXManager()
+                self.warning_manager = MultiWarningOverlay()
+                self.particles_manager.play_block(500, 500)
+                self.particles_manager.play_parry(600, 500)
             self.new_state('fight')
             self.fight_loop()
         else:
-            self.FightModeIsOn = False
-            self.SupressRightClicks = False
-            self.vfx.deinitialize()
-            del self.vfx
+            self.fight_mode_active = False
+            self.supress_right_clk = False
+            self.particles_manager.deinitialize()
+            del self.particles_manager
+            self.warning_manager.deinitialize()
+            del self.warning_manager
             if getattr(self, '_fight_loop_after_id', None) is not None:
                 self.window.after_cancel(self._fight_loop_after_id)
                 self._fight_loop_after_id = None
@@ -1625,12 +1634,11 @@ class Sharko(SharkoConstants):
     def fight_loop(self):
         if self.current_state != 'fight':
             return
-        print("Fight loop running")
         
-        #self.vfx.start_spirit_beam("main_beam", 0, 0, 0, 0)
+        #self.particles_manager.start_spirit_beam("main_beam", 0, 0, 0, 0)
 
         #mx, my = win32api.GetCursorPos()
-        #self.vfx.update_spirit_beam("main_beam", mx, my, mx, my)
+        #self.particles_manager.update_spirit_beam("main_beam", mx, my, mx, my)
         
         folder_view, hwnd_lv = DesktopUtils.get_desktop_interfaces(
             SharkoConstants.CLSID_ShellWindows,
@@ -1646,24 +1654,24 @@ class Sharko(SharkoConstants):
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
         x,y = 0,0
         if num_icons <= 3:
-            replacementshortcut = DesktopUtils.create_shortcut(hwnd_lv)
+            replacement_shortcut = DesktopUtils.create_shortcut(hwnd_lv)
             closest = []
-            closest.append(replacementshortcut)
+            closest.append(replacement_shortcut)
             x = random.randint(350,screen_w-350)
             y = random.randint(350,work_area_height-350)
 
             pos = win32api.MAKELONG(int(x), int(y))
-            win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, replacementshortcut, pos)
+            win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, replacement_shortcut, pos)
         item = folder_view.Item(closest[0])
         item_pos = folder_view.GetItemPosition(item)
         
         def schedule_next_attack():
             """Schedule the next attack 2 seconds after this one finishes"""
             self._fight_loop_after_id = self.window.after(2000, self.fight_loop)
-        
+        self.log_stats()
         #self.Jump([random.randint(350, screen_w - 350), work_area_height - 343], 1)
-        self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
-        #self.Lazer(10000,on_complete=schedule_next_attack)
+        #self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
+        self.Lazer(10000,on_complete=schedule_next_attack)
 
 
     def sounds(self, sound_object):
