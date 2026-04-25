@@ -94,7 +94,7 @@ class IconManager:
 
                 if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
                     hit_registered = True
-                    self.damage()
+                    self.CombatSystem.damage(self)
 
                 pos = win32api.MAKELONG(int(x), int(y))
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
@@ -119,7 +119,7 @@ class IconManager:
                 t = (i / bob_steps)**0.8
                 if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
                     hit_registered = True
-                    self.damage()
+                    self.CombatSystem.damage(self)
                 fall = (1 - t) ** 2
                 base_y = over_y + (target_y - over_y) * fall
 
