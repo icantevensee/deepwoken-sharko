@@ -1,6 +1,19 @@
-"""
-Constants and configuration for Sharko application
-"""
+def _decode_escapes(s):
+    """Decode escape sequences and HTML entities in strings"""
+    if not isinstance(s, str):
+        return s
+    if ('\\u' in s) or ('\\x' in s) or ('\\U' in s) or ('&#' in s) or ('&' in s):
+        try:
+            decoded = s.encode('utf-8').decode('unicode_escape')
+        except Exception:
+            decoded = s
+        try:
+            import html
+            decoded = html.unescape(decoded)
+        except Exception:
+            pass
+        return decoded
+    return s
 
 class SharkoConstants:
     """Class constants and configuration"""
@@ -19,8 +32,9 @@ class SharkoConstants:
     
     # Paths
     ASSETS_PATH = "assets/"
+    CURRENT_IMAGES_PATH = "assets/sharko/"
     IMAGES_PATH = "assets/sharko/"
-    ALT_1IMAGES_PATH = "assets/mirror_sharko"
+    ALT_IMAGES_PATH = "assets/mirror_sharko"
     BAR_IMG_PATH = "assets/UI/boss_bar_border.png"
     MARKER_PATH = "assets/UI/boss_bar_pins.png"
     CENTER_ICON_PATH = "assets/UI/boss_bar_skull.png"
@@ -55,3 +69,44 @@ class SharkoConstants:
     SPI_GETWORKAREA = 0x0030
     LVM_SETITEMPOSITION = 0x100F
     LVM_GETITEMCOUNT = 0x1004
+
+
+    try:
+        file = open('Lines.txt', 'r', encoding='utf-8')
+        Lines = file.readlines()
+        clean_lines = [_decode_escapes(line.strip()) for line in Lines]
+        Lines = clean_lines
+    except Exception:
+        try:
+            file = open('Lines.txt', 'r')
+            Lines = [line.strip() for line in file.readlines()]
+        except Exception:
+            Lines = []
+    finally:
+        try:
+            file.close()
+        except Exception:
+            pass
+    file = open('removal_lines+intro_line.txt', 'r', encoding='utf-8')
+    removal_intro_lines = file.readlines()
+    removal_lines = []
+
+    for index, line in enumerate(removal_intro_lines):
+        decoded = _decode_escapes(line.strip())
+        if index > 2:
+            removal_lines.append(decoded)
+        elif index == 1:
+            intro_line = decoded
+    file.close()
+
+    file = open('Questions.txt', 'r', encoding='utf-8')
+    removal_intro_lines = file.readlines()
+    Questions = []
+    for index, line in enumerate(removal_intro_lines):
+        decoded = _decode_escapes(line.strip())
+        current_question = int(index/5)
+        current_line  = index - current_question*5
+        if current_line == 0:
+            Questions.append([])
+        Questions[current_question].append(decoded)
+    file.close()

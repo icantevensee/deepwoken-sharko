@@ -1,99 +1,59 @@
 from ctypes import windll, wintypes, byref
-import ctypes
-import tkinter as tk
+import win32gui
+import win32api
+
 import random
-import os
-import psutil
-import pygame
 import math
 import time
-from pynput import keyboard, mouse
-from PIL import Image, ImageDraw, ImageFont, ImageTk, ImageOps, ImageFilter
+import numpy as np
+
+import tkinter as tk
+import pygame
+
+import os
 import sys
+
+from pynput import keyboard, mouse
+
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QPixmap, QPainter, QImage
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
-from vfx_manager import VFXManager, MultiWarningOverlay
-import threading
-import pythoncom
-from win32com.shell import shell, shellcon
-from win32com.client import Dispatch
-import win32com.client as wcomcli
-import win32gui
-import win32api
-import numpy as np
-from boss_bar import ScalableHealthBar
 
-# Import modularized components
+import threading
+
+from boss_bar import ScalableHealthBar
+from vfx_manager import VFXManager, MultiWarningOverlay
+
 from constants import SharkoConstants
+from icons import IconManager
 from math_utils import MathUtils
 from shortcut_utils import DesktopUtils
 from tile import Tile
+
+import psutil
 
 
 throw_lock = threading.Lock()
 
 
-
-
 # Make Tkinter aware of Windows DPI scaling
 try:
-    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    windll.shcore.SetProcessDpiAwareness(1)
 except Exception:
     pass
 
-class Sharko(SharkoConstants):
+class Sharko(SharkoConstants, IconManager):
     thrown_icons = set()
-
 
     def __init__(self, image_path, talking_path, greeting_path, removal_path):
         self.app = QApplication(sys.argv)
 
-
         self._idle_after_id = None
         self._fight_loop_after_id = None
-        try:
-            file = open('Lines.txt', 'r', encoding='utf-8')
-            self.Lines = file.readlines()
-            clean_lines = [self._decode_escapes(line.strip()) for line in self.Lines]
-            self.Lines = clean_lines
-        except Exception:
-            try:
-                file = open('Lines.txt', 'r')
-                self.Lines = [line.strip() for line in file.readlines()]
-            except Exception:
-                self.Lines = []
-        finally:
-            try:
-                file.close()
-            except Exception:
-                pass
-        file = open('removal_lines+intro_line.txt', 'r', encoding='utf-8')
-        removal_intro_lines = file.readlines()
-        self.removal_lines = []
 
-        for index, line in enumerate(removal_intro_lines):
-            decoded = self._decode_escapes(line.strip())
-            if index > 2:
-                self.removal_lines.append(decoded)
-            elif index == 1:
-                self.intro_line = decoded
-        file.close()
-
-        file = open('Questions.txt', 'r', encoding='utf-8')
-        removal_intro_lines = file.readlines()
-        self.Questions = []
-        for index, line in enumerate(removal_intro_lines):
-            decoded = self._decode_escapes(line.strip())
-            current_question = math.floor(index/5)
-            current_line  = index - current_question*5
-            if current_line == 0:
-                self.Questions.append([])
-            self.Questions[current_question].append(decoded)
-        file.close()
-
-        self.Quiet = False
+        self.talking_disabled = False
         self.cutscene_active = False
         self.fight_mode_active = False
         self.movie_mode_active = False
@@ -115,11 +75,12 @@ class Sharko(SharkoConstants):
         self.load_images(image_path, talking_path, greeting_path, removal_path)
         self.create_gui()
         self.animate()
+        pygame.mixer.set_num_channels(16)
         self.sounds(pygame.mixer.Sound(self.sound_file))
         self.add_talking_sentences(self.intro_line.strip(),'greeting',False)
         self.window.after(self.GREETING_ANIMATION_DELAY, self.idle_state)
-        self.sound_paths = [self.END_TALKING_SOUND, self.START_TALKING_SOUND, self.GREETING_SOUND, self.CLASH_SOUND, self.ANSWER_SOUND, self.BLOCK_ATTEMPT_SOUND, self.PARRY_SOUND, self.BLOCK_SOUND,self.HIT_SOUND]
-        self.sounds_group = [pygame.mixer.Sound(path) for path in self.sound_paths]
+        self.sound_paths = {'end': self.END_TALKING_SOUND, 'start': self.START_TALKING_SOUND, 'greeting': self.GREETING_SOUND, 'clash': self.CLASH_SOUND, 'answer': self.ANSWER_SOUND, 'block_attempt': self.BLOCK_ATTEMPT_SOUND, 'parry': self.PARRY_SOUND, 'block': self.BLOCK_SOUND, 'hit': self.HIT_SOUND}
+        self.sounds_group = {name: pygame.mixer.Sound(path) for name, path in self.sound_paths.items()}
         self.Walkspeed = 230 #Pixels per second
         self.walking_enabled = True
         self.supress_right_clk = False
@@ -163,28 +124,9 @@ class Sharko(SharkoConstants):
 
         self.window.mainloop()
 
-
     def log_stats(self):
         mem_mb = self.process.memory_info().rss / (1024 * 1024)
         print(f"RAM: {mem_mb:.2f} MB")
-
-
-    def _decode_escapes(self, s):
-        """Decode escape sequences and HTML entities in strings"""
-        if not isinstance(s, str):
-            return s
-        if ('\\u' in s) or ('\\x' in s) or ('\\U' in s) or ('&#' in s) or ('&' in s):
-            try:
-                decoded = s.encode('utf-8').decode('unicode_escape')
-            except Exception:
-                decoded = s
-            try:
-                import html
-                decoded = html.unescape(decoded)
-            except Exception:
-                pass
-            return decoded
-        return s
 
     def load_cutscenes(self):
                 #Cutscene Format:
@@ -192,49 +134,48 @@ class Sharko(SharkoConstants):
                 #["repeat",firstimage,secondimage, sound, timebetweentransitions, #transitions, Isthisfirstframe(just keep it true)] if you want it to repeat between 2 frames for dialouge
                 #howlongtokeep & timebetweentransitions are in miliseconds
                 self.CutscenePresets = {
-            'InactiveCutscene': [[tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png')), 1000, "None"],
-                     [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'sideframe.png')), 150, "None"],
-                     [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'staringframe.png')), 1000, "None"],
-                     ["repeat",tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'HelloSmall1.png')),tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'HelloSmall2.png')), 1, 500, 10,True],
-                     ["repeat",tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'HelloBig1.png')),tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'HelloBig2.png')), 3, 500, 11,True],
-                     [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'staringframe.png')), 1000, "None"],
-                     [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'sideframe.png')), 150, "None"]],
+            'InactiveCutscene': [[tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle1.png')), 1000, "None"],
+                     [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'sideframe.png')), 150, "None"],
+                     [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'staringframe.png')), 1000, "None"],
+                     ["repeat",tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'HelloSmall1.png')),tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'HelloSmall2.png')), 'start', 500, 10,True],
+                     ["repeat",tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'HelloBig1.png')),tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'HelloBig2.png')), 'clash', 500, 11,True],
+                     [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'staringframe.png')), 1000, "None"],
+                     [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'sideframe.png')), 150, "None"]],
 
         }
 
-
     def load_images(self, image_path, talking_path, greeting_path, removal_path):
-        self.IMAGES_PATH = image_path
+        self.CURRENT_IMAGES_PATH = image_path
         self.TALKING_SENTENCES_PATH = talking_path
         self.GREETING_SENTENCES_PATH = greeting_path
         self.REMOVAL_SENTENCES_PATH = removal_path
         self.load_cutscenes()
 
         self.states = {
-            'idle': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png')),
-                     tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle2.png'))],
-            'Limbo': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png')),
-                     tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle2.png'))],
-            'walking': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'walk1.png')),
-                        tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'walk2.png'))],
+            'idle': [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle1.png')),
+                     tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle2.png'))],
+            'Limbo': [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle1.png')),
+                     tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle2.png'))],
+            'walking': [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'walk1.png')),
+                        tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'walk2.png'))],
 
             'talking': [],
 
             'fight': [],
 
-            'greeting': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking1.png')),
-                        tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking2.png'))],
+            'greeting': [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')),
+                        tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png'))],
 
-            'MovieG': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'glasses1.png')),
-                         tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'glasses2.png'))],
+            'MovieG': [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'glasses1.png')),
+                         tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'glasses2.png'))],
             
-            'MovieNG': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png')),
-                     tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle2.png'))],
+            'MovieNG': [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle1.png')),
+                     tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle2.png'))],
 
             'cutscene': [],
 
-            'removal': [tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking1.png')),
-                        tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'talking2.png'))],
+            'removal': [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')),
+                        tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png'))],
         }
         
         # Pre-load jump images for fighting to avoid loading them in each frame
@@ -246,20 +187,17 @@ class Sharko(SharkoConstants):
             'idle1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png'))
         }
         self.alt_jump_images = {
-            'jump1': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump1.png')),
-            'jump2': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump2.png')),
-            'jump3': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump3.png')),
-            'jump4': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'jump4.png')),
-            'idle1': tk.PhotoImage(file=os.path.join(self.ALT_1IMAGES_PATH, 'idle1.png'))
+            'jump1': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'jump1.png')),
+            'jump2': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'jump2.png')),
+            'jump3': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'jump3.png')),
+            'jump4': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'jump4.png')),
+            'idle1': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'idle1.png'))
         }
         self.pivot_images = {
             'Pivot_Body': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Body.png')).convert("RGBA"),
             'Pivot_Face': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Face.png')).convert("RGBA"),
             'Pivot_Corals': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Corals.png')).convert("RGBA")
         }
-
-
-
 
     def move_window_x(self,window, target_x):
         ANIMATION_DELAYOrig = self.ANIMATION_DELAY
@@ -297,11 +235,7 @@ class Sharko(SharkoConstants):
             window.after(FRAME_DELAY_MS, step_move, current_step + 1, current_x + step_dx)
         window.after(FRAME_DELAY_MS, step_move, 0, start_x)
 
-
-
     def Lazer(self, duration_ms, on_complete=None):
-
-
 
         start_time = time.time()
         body_width = self.pivot_images['Pivot_Body'].width
@@ -417,9 +351,6 @@ class Sharko(SharkoConstants):
                 if on_complete: on_complete()
         update_lazer(frame1db)
             
-
-
-
     def JumpAndHit(self,jump_peak,shortcut,speed,on_complete=None):
         peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
         folder_view,hwnd_lv = DesktopUtils.get_desktop_interfaces(
@@ -583,17 +514,17 @@ class Sharko(SharkoConstants):
         ts = np.linspace(0, 1, Steps)
         points = B(ts)
         current_step = 2
-        img_pth = self.IMAGES_PATH
+        img_pth = self.CURRENT_IMAGES_PATH
         offset = 0
         hit_detected = False
         sprite_width = 165
         sprite_height = 165
         if end_x > start_x:
-            img_pth = self.ALT_1IMAGES_PATH
+            img_pth = self.ALT_IMAGES_PATH
             offset = int(359/2)
         
         # Cache image dictionaries for performance
-        cached_images = self.alt_jump_images if img_pth == self.ALT_1IMAGES_PATH else self.jump_images
+        cached_images = self.alt_jump_images if img_pth == self.ALT_IMAGES_PATH else self.jump_images
         frame_counter = 0  # Track frames for cursor position sampling
         last_image = None  # Track last displayed image to avoid redundant updates
         
@@ -612,10 +543,10 @@ class Sharko(SharkoConstants):
                 slope = (current_y-previous_y)/math.fabs(current_x-previous_x)*-1
             if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
                 if current_x-previous_x-2 > 0:
-                    img_pth = self.ALT_1IMAGES_PATH
+                    img_pth = self.ALT_IMAGES_PATH
                     offset = int(359/2)
                 elif current_x-previous_x+2 < 0:
-                    img_pth = self.IMAGES_PATH
+                    img_pth = self.CURRENT_IMAGES_PATH
                     offset = 0
 
             # Use preloaded image dictionary and only update if image changes
@@ -641,7 +572,7 @@ class Sharko(SharkoConstants):
                 mouse_x, mouse_y = win32api.GetCursorPos()
                 sprite_x = current_x + offset
                 sprite_y = current_y
-                if img_pth == self.ALT_1IMAGES_PATH:
+                if img_pth == self.ALT_IMAGES_PATH:
                     sprite_x += 192
                     sprite_y += 178
                 else:
@@ -664,7 +595,6 @@ class Sharko(SharkoConstants):
                     on_complete()
         Step_move(current_step, hit_detected,img_pth,offset)
         
-
     def create_gui(self):
         self.label = tk.Label(self.window, bd=0, bg='#2a2d2a')
         self.label.configure(image=self.states['idle'][0])
@@ -694,7 +624,6 @@ class Sharko(SharkoConstants):
         self.label.bind("<ButtonRelease-2>", self.release)
         self.label.bind("<B2-Motion>", self.move2)
         self.label.bind("<Double-Button-2>", lambda event: self.menu.post(event.x_root, event.y_root))
-
 
     def animate(self):
         if self.label.image == None:
@@ -730,7 +659,6 @@ class Sharko(SharkoConstants):
         Cutscene = self.CutscenePresets[cutscenepreset]
         self.PlayCutsceneFrame(Cutscene, 0,cutscenepreset)
 
-
     def PlayCutsceneFrame(self, Cutscene, current_frame,cutscenepreset):
         if cutscenepreset== 'InactiveCutscene':
             if time.time()-self.last_input_time < self.INACTIVE_TIME_REQUIREMENT:
@@ -738,19 +666,18 @@ class Sharko(SharkoConstants):
                     current_frame = 6 
                 elif current_frame == len(Cutscene):
                     self.cutscene_active = False
-                    self.Quiet = False
+                    self.talking_disabled = False
                     self.load_cutscenes()
                     self.idle_state()
                     self.animate()
                     return
             elif current_frame == len(Cutscene):
                 self.cutscene_active = False
-                self.Quiet = True
+                self.talking_disabled = True
                 self.load_cutscenes()
                 self.idle_state()
                 self.animate()
                 return
-
 
         if current_frame == len(Cutscene):
             self.cutscene_active = False
@@ -758,9 +685,6 @@ class Sharko(SharkoConstants):
             self.idle_state()
             self.animate()
             return
-            
-
-
         
         current_frame_info = Cutscene[current_frame]
         if current_frame_info[0] == "repeat":
@@ -786,11 +710,6 @@ class Sharko(SharkoConstants):
         self.label.image = Image
         self.window.after(Time, self.PlayCutsceneFrame,Cutscene,current_frame,cutscenepreset)
 
-
-        
-
-
-
     def clear_talking(self,state):
         self.states[state] = []
         if hasattr(self, 'talk_overlay') and self.talk_overlay is not None:
@@ -806,7 +725,6 @@ class Sharko(SharkoConstants):
                 self.label.unbind("<Button-1>")
             except Exception:
                 pass
-
 
     def move1(self, event):
         if self.fight_mode_active == True or self.cutscene_active == True:
@@ -824,12 +742,12 @@ class Sharko(SharkoConstants):
         if x >= x_off and x <= x_off + 255 and y >= 96 and y <= 126:
             answer_text = self._question_answers[0] if self._question_answers else None
             if answer_text:
-                self.sounds(self.sounds_group[5])
+                self.sounds(self.sounds_group['answer'])
                 self._display_answer(answer_text)
         elif x >= x_off and x <= x_off + 255 and y >= 126 and y <= 163:
             answer_text = self._question_answers[1] if self._question_answers else None
             if answer_text:
-                self.sounds(self.sounds_group[5])
+                self.sounds(self.sounds_group['answer'])
                 self._display_answer(answer_text)
 
     def _display_answer(self, answer_text):
@@ -851,11 +769,9 @@ class Sharko(SharkoConstants):
         except Exception:
             self._idle_after_id = None
 
-
     def release(self, event):
         self.y = event.y
         self.currently_moving = False
-
 
     def move2(self, event):
         if self.fight_mode_active == True or self.cutscene_active == True:
@@ -863,7 +779,6 @@ class Sharko(SharkoConstants):
         x = self.window.winfo_pointerx() - self.x
         y = self.window.winfo_pointery() - self.y
         self.window.geometry(f"+{x}+{y}")
-
 
     def new_state(self, new_state):
         self.current_state = new_state
@@ -918,11 +833,9 @@ class Sharko(SharkoConstants):
         except Exception:
             pass
 
-
-
     def on_press(self, key):
         self.last_input_time = time.time()
-        self.Quiet = False
+        self.talking_disabled = False
         try:
             if key.char == 'f':
                 # Only initialize on first press, not on key repeat
@@ -951,7 +864,7 @@ class Sharko(SharkoConstants):
                             # Extend parry window to include block window
                             self.parry_active_until = self.block_active_until
                             try:
-                                self.sounds(self.sounds_group[5])
+                                self.sounds(self.sounds_group['block_attempt'])
                             except Exception as e:
                                 print(f"Error playing block attempt sound: {e}")
                     
@@ -984,8 +897,7 @@ class Sharko(SharkoConstants):
         if button == mouse.Button.right and self.supress_right_clk == True:
             mouse.Listener.suppress_event(self)
         self.last_input_time = time.time()
-        self.Quiet = False
-
+        self.talking_disabled = False
 
     def talking_state(self):
         if self.current_state == 'idle':
@@ -999,14 +911,13 @@ class Sharko(SharkoConstants):
                 self.add_new_question(Line)
                 self.new_state('talking')
 
-            self.sounds(self.sounds_group[1])
+            self.sounds(self.sounds_group['start'])
         try:
             if getattr(self, '_idle_after_id', None) is not None:
                 self.window.after_cancel(self._idle_after_id)
         except Exception:
             pass
         self._idle_after_id = self.window.after(self.TALKING_ANIMATION_DELAY, self.idle_state)
-
     
     def idle_state(self):
         try:
@@ -1015,18 +926,18 @@ class Sharko(SharkoConstants):
             pass
         if self.current_state == 'talking' or self.current_state == 'cutscene' and self.cutscene_active == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.movie_mode_active == False or self.current_state == 'MovieNG' and self.movie_mode_active == False or self.current_state == 'Limbo' or self.current_state == 'fight' and self.fight_mode_active == False:
             if not self.current_state == 'walking' and not self.current_state == 'cutscene' and not self.current_state == 'Limbo':
-                self.sounds(self.sounds_group[0])
+                self.sounds(self.sounds_group['end'])
             self.new_state('idle')
             self.clear_talking('talking')
-            if time.time()-self.last_input_time > self.INACTIVE_TIME_REQUIREMENT and self.Quiet == False:
-                self.Quiet = True
+            if time.time()-self.last_input_time > self.INACTIVE_TIME_REQUIREMENT and self.talking_disabled == False:
+                self.talking_disabled = True
                 self.play_cutscene('InactiveCutscene')
             else:
                 random_integer = random.randint(1, 20)
-                if random_integer > 3 and self.Quiet == False or self.currently_moving == True or self.walking_enabled == False and self.Quiet == False:
+                if random_integer > 13 and self.talking_disabled == False or self.currently_moving == True or self.walking_enabled == False and self.talking_disabled == False:
                     self.window.after(self.IDLE_ANIMATION_DELAY, self.talking_state)
                 else:
-                    if self.walking_enabled == False and self.Quiet == True:
+                    if self.walking_enabled == False and self.talking_disabled == True:
                         self.current_state = 'Limbo'
                         self.window.after(self.IDLE_ANIMATION_DELAY, self.idle_state)
                     else:
@@ -1050,16 +961,10 @@ class Sharko(SharkoConstants):
     def add_new_question(self,Question_Lines):
         self.add_talking_sentences(Question_Lines,'talking',3)
 
-
-
-
     def add_talking_sentences(self,sentence,state,IsQuestion):
-
 
         if not hasattr(self, 'Lines') or not self.Lines:
             return
-
-
         
         box_w, box_h = 255, 140
 
@@ -1143,8 +1048,8 @@ class Sharko(SharkoConstants):
             opt2_img = render_text_image(option2_text, (255, 30))
 
             try:
-                base1_path = os.path.join(self.IMAGES_PATH, 'talking1.png')
-                base2_path = os.path.join(self.IMAGES_PATH, 'talking2.png')
+                base1_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')
+                base2_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png')
                 base1 = Image.open(base1_path).convert('RGBA')
                 base2 = Image.open(base2_path).convert('RGBA')
             except Exception:
@@ -1194,12 +1099,10 @@ class Sharko(SharkoConstants):
                 pass
             return
 
-        
-
         text_img = render_text_image(sentence, (box_w, box_h))
         try:
-            base1_path = os.path.join(self.IMAGES_PATH, 'talking1.png')
-            base2_path = os.path.join(self.IMAGES_PATH, 'talking2.png')
+            base1_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')
+            base2_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png')
             base1 = Image.open(base1_path).convert('RGBA')
             base2 = Image.open(base2_path).convert('RGBA')
         except Exception:
@@ -1212,7 +1115,6 @@ class Sharko(SharkoConstants):
 
         def composite_on_base(base_img):
             b = base_img.copy()
-            bw, bh = b.size
             if self.current_facing == "Left":
                 x = 97
             else:
@@ -1236,10 +1138,8 @@ class Sharko(SharkoConstants):
 
         self.states[state] = [tk_img1, tk_img2]
 
-    
     def add_removal_sentences(self):
         self.add_talking_sentences(random.choice(self.removal_lines).strip(),'removal',False)
-
 
     def close_command(self):
         self.end = True
@@ -1249,10 +1149,6 @@ class Sharko(SharkoConstants):
         if not getattr(self, '_death_scheduled', False):
             self._death_scheduled = True
             self.window.after(self.REMOVAL_ANIMATION_DELAY, self.death_animation)
-
-
-    def exit():
-        os._exit(0)
 
     def death_animation(self):
         Screen_x,Screen_y = self.window.winfo_x(), self.window.winfo_y()
@@ -1282,7 +1178,6 @@ class Sharko(SharkoConstants):
 
 
             def load_tiles(self, src_path):
-
                 src = src_path
                 self.img_w = src.width()
                 self.img_h = src.height()
@@ -1348,7 +1243,7 @@ class Sharko(SharkoConstants):
             if time_held >= self.parry_window:
                 self.last_parry_block_time = 0
                 try:
-                    self.sounds(self.sounds_group[7])
+                    self.sounds(self.sounds_group['block'])
                 except Exception as e:
                     print(f"Error playing block sound: {e}")
                 if self.particles_manager:
@@ -1356,7 +1251,7 @@ class Sharko(SharkoConstants):
             else:
                 self.last_parry_block_time = 0
                 try:
-                    self.sounds(self.sounds_group[6])
+                    self.sounds(self.sounds_group['parry'])
                 except Exception as e:
                     print(f"Error playing parry sound: {e}")
                 if self.particles_manager:
@@ -1393,180 +1288,11 @@ class Sharko(SharkoConstants):
             self.particles_manager.play_blood(mouse_x, mouse_y)
         try:
             # Try to play a hit/damage sound if it exists
-            self.sounds(self.sounds_group[8])
+            self.sounds(self.sounds_group['hit'])
         except Exception as e:
             pass
 
-    def _throw_worker(self, index, target_pos,speed_factor,name):
-        pythoncom.CoInitialize()
-        with throw_lock:
-            if name in self.thrown_icons:
-                pythoncom.CoUninitialize()
-                return
-            self.thrown_icons.add(name)
-        try:
-
-            folder_view, hwnd_lv = DesktopUtils.get_desktop_interfaces(
-                SharkoConstants.CLSID_ShellWindows,
-                SharkoConstants.IID_IFolderView,
-                SharkoConstants.SWC_DESKTOP,
-                SharkoConstants.SWFO_NEEDDISPATCH
-            )
-            item = None
-            try:
-                item = folder_view.Item(index)
-            except Exception:
-                with throw_lock:
-                    self.thrown_icons.discard(name)
-
-                pythoncom.CoUninitialize()
-                return
-            item_name = name
-            start_pos = folder_view.GetItemPosition(item)
-            original_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
-
-            mousex, mousey = target_pos
-            x0, y0 = start_pos
-
-            screen_w = win32api.GetSystemMetrics(0)
-            screen_h = win32api.GetSystemMetrics(1)
-
-            spacing = win32gui.SendMessage(hwnd_lv, 0x1033, 0, 0)
-            cell_h = (spacing >> 16) & 0xFFFF
-
-            end_x = mousex - cell_h ** 1.2 * 0.10
-            end_y = mousey - cell_h ** 1.2 * 0.10
-
-            dx = end_x - x0
-            dy = end_y - y0
-            over_x = x0 + dx * (1+(0.1/speed_factor))
-            over_y = y0 + dy * (1+(0.1/speed_factor))
-
-            over_x = DesktopUtils.clamp(over_x, 0, screen_w - cell_h // 2)
-            over_y = DesktopUtils.clamp(over_y, 0, screen_h - cell_h)
-
-            target_x = DesktopUtils.clamp(end_x, 0, screen_w - cell_h // 2)
-            target_y = DesktopUtils.clamp(end_y, 0, screen_h - cell_h)
-
-            ctrl_x = (x0 + target_x) // 2
-            ctrl_y = min(y0, over_y) - 300
-
-            steps = math.floor(250*speed_factor)
-            duration = 2.0*speed_factor
-            dt = duration / steps
-            hit_registered = False
-
-            for i in range(steps + 1):
-                current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
-                if not DesktopUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
-                    original_count = current_count
-                    index = DesktopUtils.get_actual_index(hwnd_lv, item_name)
-                    if index == -1: 
-                        with throw_lock:
-                            self.thrown_icons.discard(name)
-
-                        pythoncom.CoUninitialize()
-                        return
-
-                t = i / steps
-                omt = 1 - t
-
-                x = (omt**2) * x0 + 2 * omt * t * ctrl_x + (t**2) * target_x
-                y = (omt**2) * y0 + 2 * omt * t * ctrl_y + (t**2) * target_y
-
-                mx, my = win32api.GetCursorPos()
-
-                if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
-                    hit_registered = True
-                    self.damage()
-
-                pos = win32api.MAKELONG(int(x), int(y))
-                win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
-                time.sleep(dt)
-
-            bob_steps = 45
-
-            dist = math.dist((over_x, over_y), (target_x, target_y))
-            dip_amount = DesktopUtils.clamp(dist * 0.15, 5, 80)
-
-            for i in range(bob_steps + 1):
-                current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
-                if not DesktopUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
-                    original_count = current_count
-                    index = DesktopUtils.get_actual_index(hwnd_lv, item_name)
-                    if index == -1: 
-                        with throw_lock:
-                            self.thrown_icons.discard(name)
-                        pythoncom.CoUninitialize()
-                        return
-
-                t = (i / bob_steps)**0.8
-                if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
-                    hit_registered = True
-                    self.damage()
-                fall = (1 - t) ** 2
-                base_y = over_y + (target_y - over_y) * fall
-
-                dip = dip_amount * (math.sin(t * math.pi)) ** 2
-
-                y = base_y + dip
-                x = target_x + (over_x - target_x) * t
-
-                x = DesktopUtils.clamp(x, 0, screen_w - cell_h // 2)
-                y = DesktopUtils.clamp(y, 0, screen_h - cell_h)
-
-                pos = win32api.MAKELONG(int(x), int(y))
-                win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
-                time.sleep(0.01)
-
-        finally:
-            with throw_lock:
-                self.thrown_icons.discard(name)
-            pythoncom.CoUninitialize()
-
-        
-    def throw_shortcut(self, index, target_pos,speed_factor,name):
-        thread = threading.Thread(
-            target=self._throw_worker,
-            args=(index, target_pos,speed_factor,name),
-            daemon=True,
-        )
-        thread.start()
-
-        
-    def get_closest_icons(self, n):
-        pythoncom.CoInitialize()
-        try:
-            folder_view, _ = DesktopUtils.get_desktop_interfaces(
-                SharkoConstants.CLSID_ShellWindows,
-                SharkoConstants.IID_IFolderView,
-                SharkoConstants.SWC_DESKTOP,
-                SharkoConstants.SWFO_NEEDDISPATCH
-            )
-            mouse = win32api.GetCursorPos()
-            items_len = folder_view.ItemCount(shellcon.SVGIO_ALLVIEW)
-            dists = []
-
-            for i in range(items_len):
-                item = folder_view.Item(i)
-                pos = folder_view.GetItemPosition(item)
-                d = math.dist(pos, mouse)
-                dists.append((d, i))
-
-            dists.sort()
-            return [idx for _, idx in dists[:n]],len(dists)
-
-        finally:
-            pythoncom.CoUninitialize()
-
-
-    def restart_application(self, new_image_path, new_talking_path, new_greeting_path, new_removal_path):
-        self.window.destroy()
-        Sharko(new_image_path, new_talking_path, new_greeting_path, new_removal_path)
-    
-
     def rotate_right(self):
-
         new_image_path = "assets/mirror_sharko/"
         new_talking_path = "assets/mirror_sentences/talking/"
         new_greeting_path = "assets/mirror_sentences/greeting/"
@@ -1589,7 +1315,6 @@ class Sharko(SharkoConstants):
         self.load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
         self.current_facing = "Right"
         self.x = self.Screen_x-359
-
         self.position_flip_trigger = True
         try:
             self.new_state('Limbo')
@@ -1603,7 +1328,7 @@ class Sharko(SharkoConstants):
             self.supress_right_clk = True
             if not self.active_bar:
                 self.active_bar = ScalableHealthBar()
-                screen_w = ctypes.windll.user32.GetSystemMetrics(0)
+                screen_w = windll.user32.GetSystemMetrics(0)
                 self.active_bar.resize(screen_w // 2, 200)
                 self.active_bar.slide_in()
                 print("Boss Bar Created from external file.")
@@ -1670,8 +1395,8 @@ class Sharko(SharkoConstants):
             self._fight_loop_after_id = self.window.after(2000, self.fight_loop)
         self.log_stats()
         #self.Jump([random.randint(350, screen_w - 350), work_area_height - 343], 1)
-        #self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
-        self.Lazer(10000,on_complete=schedule_next_attack)
+        self.JumpAndHit(item_pos,closest[0],0.4,on_complete=schedule_next_attack)
+        #self.Lazer(10000,on_complete=schedule_next_attack)
 
 
     def sounds(self, sound_object):
