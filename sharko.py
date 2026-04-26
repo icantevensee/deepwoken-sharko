@@ -7,6 +7,7 @@ import math
 import time
 
 import tkinter as tk
+from tkinter import TclError
 import pygame
 
 import os
@@ -18,7 +19,6 @@ from PIL import Image, ImageDraw, ImageFont, ImageTk
 from PyQt5.QtWidgets import QApplication, QWidget
 from PyQt5.QtGui import QPixmap, QPainter, QImage
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QPixmap
 
 import threading
 
@@ -52,22 +52,20 @@ class Sharko(SharkoConstants, IconManager):
         self.window = tk.Tk()
         
         #SCREEN & DISPLAY CONFIGURATION
-        self.Screen_x = self.window.winfo_screenwidth()
-        self.Screen_y = self.window.winfo_screenheight()
+        self.screen_x = self.window.winfo_screenwidth()
+        self.screen_y = self.window.winfo_screenheight()
         
-        screen_width = windll.user32.GetSystemMetrics(0)
-        screen_height = windll.user32.GetSystemMetrics(1)
         desktop_working_area = wintypes.RECT()
-        windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
+        windll.user32.SystemParametersInfoW(self.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
-        thickness_vertical = screen_height - work_area_height    
+        thickness_vertical = self.screen_y - work_area_height    
         if thickness_vertical > 0:
             taskbar_thickness = thickness_vertical
         else:
             taskbar_thickness = 0
 
-        x = self.Screen_x - 357
-        y = self.Screen_y - 342 - taskbar_thickness
+        x = self.screen_x - 357
+        y = self.screen_y - 342 - taskbar_thickness
         self.x = x
         self.y = y
         self.window.geometry(f"+{x}+{y}")
@@ -88,7 +86,6 @@ class Sharko(SharkoConstants, IconManager):
         
         #AUDIO SYSTEM
         self.sound_enabled = True
-        self.min_volume = 0.1
         self.sound_file = self.GREETING_SOUND
         pygame.init()
         pygame.mixer.set_num_channels(16)
@@ -96,7 +93,6 @@ class Sharko(SharkoConstants, IconManager):
         self.sounds_group = {name: pygame.mixer.Sound(path) for name, path in self.sound_paths.items()}
         
         #MOVEMENT SYSTEM
-        self.Walkspeed = 230  # Pixels per second
         self.walking_enabled = True
         
         #INPUT & INTERACTION
@@ -109,8 +105,6 @@ class Sharko(SharkoConstants, IconManager):
         self.last_parry_block_time = 0
         self.blocking = False
         self.block_active_until = 0
-        self.parry_window = 0.3  # seconds
-        self.parry_block_cooldown = 0.75  # seconds
         self.block_transition_callback = None
         self.f_key_held = False
         
@@ -131,7 +125,7 @@ class Sharko(SharkoConstants, IconManager):
         self.window.after(self.GREETING_ANIMATION_DELAY, self.idle_state)
         
         #COMBAT SYSTEM
-        self.CombatSystem = CombatSystem(self)
+        self.CombatSystem = CombatSystem()
         self.active_bar = None
         
         #SYSTEM MONITORING
@@ -227,15 +221,15 @@ class Sharko(SharkoConstants, IconManager):
         start_x = int(window.geometry().split('+')[-2])
 
         total_dx = target_x - start_x
-        duration_ms = int(math.ceil(abs(total_dx)/self.Walkspeed)*1000)   
-        FRAME_DELAY_MS = 16 
+        duration_ms = int(math.ceil(abs(total_dx)/self.WALKSPEED)*1000)   
+        FRAME_DELAY_MS = self.FRAME_DELAY_MS 
         num_steps = max(1, duration_ms // FRAME_DELAY_MS)
         step_dx = total_dx / num_steps
         def step_move(current_step, current_x):
-            if self.fight_mode_active == True:
+            if self.fight_mode_active:
                 return
 
-            if self.end == True or self.currently_moving == True:
+            if self.end or self.currently_moving:
                 self.ANIMATION_DELAY = ANIMATION_DELAYOrig
                 self.window.after(FRAME_DELAY_MS, self.idle_state)
                 return
@@ -285,19 +279,22 @@ class Sharko(SharkoConstants, IconManager):
         self.label.bind("<ButtonPress-2>", self.move1)
         self.label.bind("<ButtonRelease-2>", self.release)
         self.label.bind("<B2-Motion>", self.move2)
-        self.label.bind("<Double-Button-2>", lambda event: self.menu.post(event.x_root, event.y_root))
+        try:
+            self.label.bind("<Double-Button-2>", lambda event: self.menu.post(event.x_root, event.y_root))
+        except (TclError, AttributeError):
+            pass
 
     def animate(self):
-        if self.label.image == None:
+        if self.label.image is None:
             return
-        if self.position_flip_trigger == True:
+        if self.position_flip_trigger:
             self.position_flip_trigger = False
             if self.current_facing == "Left":
                 self.window.geometry(f'+{0}+{self.window.geometry().split('+')[-1]}')
             else: 
-                self.window.geometry(f'+{self.Screen_x-359}+{self.window.geometry().split('+')[-1]}')
+                self.window.geometry(f'+{self.screen_x-359}+{self.window.geometry().split('+')[-1]}')
 
-        if self.cutscene_active == True or self.fight_mode_active == True:
+        if self.cutscene_active or self.fight_mode_active:
             return
         state_images = self.states.get(self.current_state, [])
         if not state_images:
@@ -314,7 +311,7 @@ class Sharko(SharkoConstants, IconManager):
         self.window.after(self.ANIMATION_DELAY, self.animate)
 
     def play_cutscene(self, cutscenepreset):
-        if self.cutscene_active == True:
+        if self.cutscene_active:
             return
         self.cutscene_active = True
         self.new_state('cutscene')
@@ -361,7 +358,7 @@ class Sharko(SharkoConstants, IconManager):
             current_frame_data["repeat_count"] -= 1
             
             # Swap images for next iteration
-            if current_frame_data["is_first_frame"] == True:
+            if current_frame_data["is_first_frame"]:
                 current_frame_data["is_first_frame"] = False
                 Sound_Cleared = True
             else:
@@ -379,11 +376,11 @@ class Sharko(SharkoConstants, IconManager):
             current_frame += 1
         
         # Play sound if not "None"
-        if sound != "None" and Sound_Cleared == True:
+        if sound != "None" and Sound_Cleared:
             try:
                 sound_file = self.sounds_group[sound]
                 self.sounds(sound_file)
-            except Exception:
+            except KeyError:
                 pass
         
         self.label.configure(image=image)
@@ -395,7 +392,7 @@ class Sharko(SharkoConstants, IconManager):
         if hasattr(self, 'talk_overlay') and self.talk_overlay is not None:
             try:
                 self.talk_overlay.destroy()
-            except Exception:
+            except (RuntimeError, AttributeError):
                 pass
             self.talk_overlay = None
         if getattr(self, 'question_active', False):
@@ -403,11 +400,11 @@ class Sharko(SharkoConstants, IconManager):
             self._question_answers = None
             try:
                 self.label.unbind("<Button-1>")
-            except Exception:
+            except (TclError, AttributeError):
                 pass
 
     def move1(self, event):
-        if self.fight_mode_active == True or self.cutscene_active == True:
+        if self.fight_mode_active or self.cutscene_active:
             return
         self.y = event.y
         self.x = event.x
@@ -419,12 +416,12 @@ class Sharko(SharkoConstants, IconManager):
         x_off = 97 if self.current_facing == "Left" else 9
         x = event.x
         y = event.y
-        if x >= x_off and x <= x_off + 255 and y >= 96 and y <= 126:
+        if x >= x_off and x <= x_off + self.QUESTION_BOX_WIDTH and y >= self.QUESTION_BOX_OPTION1_Y and y <= self.QUESTION_BOX_OPTION1_Y + self.QUESTION_BOX_OPTION_HEIGHT:
             answer_text = self._question_answers[0] if self._question_answers else None
             if answer_text:
                 self.sounds(self.sounds_group['answer'])
                 self._display_answer(answer_text)
-        elif x >= x_off and x <= x_off + 255 and y >= 126 and y <= 163:
+        elif x >= x_off and x <= x_off + self.QUESTION_BOX_WIDTH and y >= self.QUESTION_BOX_OPTION2_Y and y <= self.QUESTION_BOX_OPTION2_Y + self.QUESTION_BOX_OPTION_HEIGHT:
             answer_text = self._question_answers[1] if self._question_answers else None
             if answer_text:
                 self.sounds(self.sounds_group['answer'])
@@ -435,18 +432,18 @@ class Sharko(SharkoConstants, IconManager):
         self._question_answers = None
         try:
             self.label.unbind("<Button-1>")
-        except Exception:
+        except (TclError, AttributeError):
             pass
         try:
             if getattr(self, '_idle_after_id', None) is not None:
                 self.window.after_cancel(self._idle_after_id)
-        except Exception:
+        except (TclError, ValueError):
             pass
         self.add_talking_sentences(answer_text, 'talking', False)
         self.new_state('talking')
         try:
             self._idle_after_id = self.window.after(self.TALKING_ANIMATION_DELAY, self.idle_state)
-        except Exception:
+        except (TclError, ValueError):
             self._idle_after_id = None
 
     def release(self, event):
@@ -454,7 +451,7 @@ class Sharko(SharkoConstants, IconManager):
         self.currently_moving = False
 
     def move2(self, event):
-        if self.fight_mode_active == True or self.cutscene_active == True:
+        if self.fight_mode_active or self.cutscene_active:
             return
         x = self.window.winfo_pointerx() - self.x
         y = self.window.winfo_pointery() - self.y
@@ -481,7 +478,7 @@ class Sharko(SharkoConstants, IconManager):
             self.currently_moving = True
             try:
                 self.window.after(50, self._stop_walk_cleanup)
-            except Exception:
+            except (TclError, ValueError):
                 self._stop_walk_cleanup()
 
     def _stop_walk_cleanup(self):
@@ -495,22 +492,22 @@ class Sharko(SharkoConstants, IconManager):
                 self.rotate_right()
                 try:
                     y = self.window.geometry().split('+')[-1]
-                except Exception:
+                except (IndexError, ValueError):
                     y = self.window.winfo_y()
                 self.window.geometry(f'+{0}+{y}')
                 self.x = 0
             else:
                 self.rotate_left()
-                right_x = max(0, self.Screen_x - int(self.WINDOW_SIZE.split('x')[0]))
+                right_x = max(0, self.screen_x - int(self.WINDOW_SIZE.split('x')[0]))
                 try:
                     y = self.window.geometry().split('+')[-1]
-                except Exception:
+                except (IndexError, ValueError):
                     y = self.window.winfo_y()
                 self.window.geometry(f'+{right_x}+{y}')
                 self.x = right_x
             self.window.lift()
             self.position_flip_trigger = True
-        except Exception:
+        except (AttributeError, RuntimeError):
             pass
 
     def on_press(self, key):
@@ -520,7 +517,7 @@ class Sharko(SharkoConstants, IconManager):
             if key.char == 'f':
                 # Only initialize on first press, not on key repeat
                 current_time = time.time()
-                if self.parry_press_time == 0 and current_time - self.last_parry_block_time >= self.parry_block_cooldown:
+                if self.parry_press_time == 0 and current_time - self.last_parry_block_time >= self.PARRY_BLOCK_COOLDOWN:
                     self.last_parry_block_time = current_time
                     # Cancel any pending callback from previous key press
                     if self.block_transition_callback:
@@ -533,14 +530,14 @@ class Sharko(SharkoConstants, IconManager):
                     # Start parry window
                     self.f_key_held = True
                     self.parry_press_time = time.time()
-                    self.parry_active_until = self.parry_press_time + self.parry_window
+                    self.parry_active_until = self.parry_press_time + self.PARRY_WINDOW
                     
                     # Schedule block transition at 0.3s mark
                     def transition_to_block():
                         # Check both that key is held AND that 0.3s has actually passed
-                        if self.f_key_held and (time.time() - self.parry_press_time) >= self.parry_window:
+                        if self.f_key_held and (time.time() - self.parry_press_time) >= self.PARRY_WINDOW:
                             self.blocking = True
-                            self.block_active_until = time.time() + self.parry_window
+                            self.block_active_until = time.time() + self.PARRY_WINDOW
                             # Extend parry window to include block window
                             self.parry_active_until = self.block_active_until
                             try:
@@ -549,7 +546,7 @@ class Sharko(SharkoConstants, IconManager):
                                 print(f"Error playing block attempt sound: {e}")
                     
                     self.block_transition_callback = self.window.after(
-                        int(self.parry_window * 1000), transition_to_block
+                        int(self.PARRY_WINDOW * 1000), transition_to_block
                     )
         except AttributeError:
             pass
@@ -574,7 +571,7 @@ class Sharko(SharkoConstants, IconManager):
             pass
 
     def on_click(self,x, y, button):
-        if button == mouse.Button.right and self.supress_right_clk == True:
+        if button == mouse.Button.right and self.supress_right_clk:
             mouse.Listener.suppress_event(self)
         self.last_input_time = time.time()
         self.talking_disabled = False
@@ -599,25 +596,38 @@ class Sharko(SharkoConstants, IconManager):
             pass
         self._idle_after_id = self.window.after(self.TALKING_ANIMATION_DELAY, self.idle_state)
     
+    def _should_transition_to_idle(self) -> bool:
+        """Check if current state should transition to idle state."""
+        is_talking_like = self.current_state in ['talking', 'greeting', 'removal']
+        is_cutscene = self.current_state == 'cutscene' and not self.cutscene_active
+        is_walking = self.current_state == 'walking'
+        is_movie = (self.current_state == 'MovieG' and not self.movie_mode_active) or \
+                   (self.current_state == 'MovieNG' and not self.movie_mode_active)
+        is_limbo = self.current_state == 'Limbo'
+        is_fight = self.current_state == 'fight' and not self.fight_mode_active
+        return is_talking_like or is_cutscene or is_walking or is_movie or is_limbo or is_fight
+    
     def idle_state(self):
         try:
             self._idle_after_id = None
-        except Exception:
+        except (AttributeError, TypeError):
             pass
-        if self.current_state == 'talking' or self.current_state == 'cutscene' and self.cutscene_active == False or self.current_state == 'greeting'or self.current_state == 'walking' or self.current_state == 'MovieG' and self.movie_mode_active == False or self.current_state == 'MovieNG' and self.movie_mode_active == False or self.current_state == 'Limbo' or self.current_state == 'fight' and self.fight_mode_active == False:
-            if not self.current_state == 'walking' and not self.current_state == 'cutscene' and not self.current_state == 'Limbo':
+        
+        if self._should_transition_to_idle():
+            if self.current_state not in ['walking', 'cutscene', 'Limbo']:
                 self.sounds(self.sounds_group['end'])
             self.new_state('idle')
             self.clear_talking('talking')
-            if time.time()-self.last_input_time > self.INACTIVE_TIME_REQUIREMENT and self.talking_disabled == False:
+            if time.time() - self.last_input_time > self.INACTIVE_TIME_REQUIREMENT and not self.talking_disabled:
                 self.talking_disabled = True
                 self.play_cutscene('InactiveCutscene')
             else:
                 random_integer = random.randint(1, 20)
-                if random_integer > 13 and self.talking_disabled == False or self.currently_moving == True or self.walking_enabled == False and self.talking_disabled == False:
+                if (random_integer > 13 and not self.talking_disabled) or self.currently_moving or \
+                   (not self.walking_enabled and not self.talking_disabled):
                     self.window.after(self.IDLE_ANIMATION_DELAY, self.talking_state)
                 else:
-                    if self.walking_enabled == False and self.talking_disabled == True:
+                    if not self.walking_enabled and self.talking_disabled:
                         self.current_state = 'Limbo'
                         self.window.after(self.IDLE_ANIMATION_DELAY, self.idle_state)
                     else:
@@ -636,7 +646,7 @@ class Sharko(SharkoConstants, IconManager):
             if self.current_facing == "Right":
                 self.move_window_x(self.window, -179)
             else:
-                self.move_window_x(self.window, self.Screen_x-179)
+                self.move_window_x(self.window, self.screen_x-179)
 
     def add_new_question(self,Question_Lines):
         self.add_talking_sentences(Question_Lines,'talking',3)
@@ -646,7 +656,7 @@ class Sharko(SharkoConstants, IconManager):
         if not hasattr(self, 'Lines') or not self.Lines:
             return
         
-        box_w, box_h = 255, 140
+        box_w, box_h = self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT
 
         def render_text_image(text, size):
             img = Image.new('RGBA', (size[0], size[1]), (0, 0, 0, 0))
@@ -654,10 +664,10 @@ class Sharko(SharkoConstants, IconManager):
 
             base_font_path = self.FONT
 
-            padding = 0
-            line_spacing = 8 
+            padding = self.TEXT_RENDER_PADDING
+            line_spacing = self.TEXT_LINE_SPACING
 
-            for font_size in range(72, 7, -1):
+            for font_size in range(self.FONT_SIZE_MAX, self.FONT_SIZE_MIN, -1):
                 font = ImageFont.truetype(base_font_path, font_size)
 
                 words = text.split()
@@ -723,9 +733,9 @@ class Sharko(SharkoConstants, IconManager):
             except Exception:
                 return
 
-            q_img = render_text_image(question_text, (255, 80))
-            opt1_img = render_text_image(option1_text, (255, 30))
-            opt2_img = render_text_image(option2_text, (255, 30))
+            q_img = render_text_image(question_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_TEXT_HEIGHT))
+            opt1_img = render_text_image(option1_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
+            opt2_img = render_text_image(option2_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
 
             try:
                 base1_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')
@@ -734,10 +744,10 @@ class Sharko(SharkoConstants, IconManager):
                 base2 = Image.open(base2_path).convert('RGBA')
             except Exception:
                 try:
-                    combined = Image.new('RGBA', (255, 140), (0, 0, 0, 0))
-                    combined.paste(q_img, (0, 9), q_img)
-                    combined.paste(opt1_img, (0, 96), opt1_img)
-                    combined.paste(opt2_img, (0, 126), opt2_img)
+                    combined = Image.new('RGBA', (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT), (0, 0, 0, 0))
+                    combined.paste(q_img, (0, self.QUESTION_BOX_TOP_Y), q_img)
+                    combined.paste(opt1_img, (0, self.QUESTION_BOX_OPTION1_Y), opt1_img)
+                    combined.paste(opt2_img, (0, self.QUESTION_BOX_OPTION2_Y), opt2_img)
                     tk_img = ImageTk.PhotoImage(combined)
                     self.states[state] = [tk_img, tk_img]
                     self._question_answers = (answer1_text, answer2_text)
@@ -756,9 +766,9 @@ class Sharko(SharkoConstants, IconManager):
                     x = 97
                 else:
                     x = 9
-                b.paste(q_img, (x, 9), q_img)
-                b.paste(opt1_img, (x, 96), opt1_img)
-                b.paste(opt2_img, (x, 126), opt2_img)
+                b.paste(q_img, (x, self.QUESTION_BOX_TOP_Y), q_img)
+                b.paste(opt1_img, (x, self.QUESTION_BOX_OPTION1_Y), opt1_img)
+                b.paste(opt2_img, (x, self.QUESTION_BOX_OPTION2_Y), opt2_img)
                 return b
 
             comp1 = composite_three(base1)
@@ -799,11 +809,11 @@ class Sharko(SharkoConstants, IconManager):
                 x = 97
             else:
                 x = 9
-            y = 9
+            y = self.QUESTION_BOX_TOP_Y
             if IsQuestion == 1:
-                y = 96
+                y = self.QUESTION_BOX_OPTION1_Y
             elif IsQuestion == 2:
-                y = 126
+                y = self.QUESTION_BOX_OPTION2_Y
             b.paste(text_img, (x, y), text_img)
             return b
 
@@ -831,7 +841,7 @@ class Sharko(SharkoConstants, IconManager):
             self.window.after(self.REMOVAL_ANIMATION_DELAY, self.death_animation)
 
     def death_animation(self):
-        Screen_x,Screen_y = self.window.winfo_x(), self.window.winfo_y()
+        screen_x,screen_y = self.window.winfo_x(), self.window.winfo_y()
         window = self.window
         TILE_SIZE = 15
 
@@ -851,7 +861,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.load_tiles(src_path)
                 src_path.size = (357, 342)
                 self.resize(self.img_w, self.img_h)
-                self.setGeometry(Screen_x-50,Screen_y-600, self.img_w, self.img_h)
+                self.setGeometry(screen_x-50,screen_y-600, self.img_w, self.img_h)
                 self.setFixedSize(600,2000)
                 self.show()
                 self.timer.start(16)
@@ -874,7 +884,7 @@ class Sharko(SharkoConstants, IconManager):
                 if not self.tiles:
                     os._exit(0)
                 self.update()
-                if self.firstime == True:
+                if self.firstime:
                     window.withdraw()
                     self.firstime = False
 
@@ -931,7 +941,7 @@ class Sharko(SharkoConstants, IconManager):
         new_removal_path = "assets/sentences/removal/"
         self.load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
         self.current_facing = "Right"
-        self.x = self.Screen_x-359
+        self.x = self.screen_x-359
         self.position_flip_trigger = True
         try:
             self.new_state('Limbo')
@@ -983,16 +993,16 @@ class Sharko(SharkoConstants, IconManager):
         #self.particles_manager.update_spirit_beam("main_beam", mx, my, mx, my)
         
         folder_view, hwnd_lv = DesktopUtils.get_desktop_interfaces(
-            SharkoConstants.CLSID_ShellWindows,
-            SharkoConstants.IID_IFolderView,
-            SharkoConstants.SWC_DESKTOP,
-            SharkoConstants.SWFO_NEEDDISPATCH
+            self.CLSID_ShellWindows,
+            self.IID_IFolderView,
+            self.SWC_DESKTOP,
+            self.SWFO_NEEDDISPATCH
         )
         closest, num_icons = self.get_closest_icons(1)
         screen_w = win32api.GetSystemMetrics(0)
         screen_h = win32api.GetSystemMetrics(1)
         desktop_working_area = wintypes.RECT()
-        windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
+        windll.user32.SystemParametersInfoW(self.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
         x,y = 0,0
         if num_icons <= 3:
@@ -1003,7 +1013,7 @@ class Sharko(SharkoConstants, IconManager):
             y = random.randint(350,work_area_height-350)
 
             pos = win32api.MAKELONG(int(x), int(y))
-            win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, replacement_shortcut, pos)
+            win32gui.SendMessage(hwnd_lv, self.LVM_SETITEMPOSITION, replacement_shortcut, pos)
         item = folder_view.Item(closest[0])
         item_pos = folder_view.GetItemPosition(item)
         

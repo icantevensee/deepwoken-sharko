@@ -17,32 +17,6 @@ from constants import SharkoConstants
 
 class CombatSystem(IconManager):
     
-    def __init__(self, sharko):
-        """
-        Args:
-            sharko: Reference to the main Sharko instance (for access to window, sounds, etc.)
-        """
-        self = sharko
-        
-        # Combat state
-        self.fight_mode_active = False
-        self.active_bar = None
-        self.particles_manager = None
-        self.warning_manager = None
-        
-        # Parry/block mechanics
-        self.parry_press_time = 0
-        self.parry_active_until = 0
-        self.last_parry_block_time = 0
-        self.blocking = False
-        self.block_active_until = 0
-        self.parry_window = 0.3  # seconds
-        self.parry_block_cooldown = 0.75  # seconds
-        self.block_transition_callback = None
-        self.f_key_held = False
-        
-        self._fight_loop_after_id = None
-
     def damage(fakeself,self): #fakeself is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
         current_time = time.time()
         mouse_x, mouse_y = win32api.GetCursorPos()
@@ -53,7 +27,7 @@ class CombatSystem(IconManager):
             # Calculate how long the key has been held
             time_held = current_time - self.parry_press_time if self.f_key_held else 0
             # Block if held >= 0.3s, otherwise parry
-            if time_held >= self.parry_window:
+            if time_held >= self.PARRY_WINDOW:
                 self.last_parry_block_time = 0
                 try:
                     self.sounds(self.sounds_group['block'])
@@ -224,7 +198,7 @@ class CombatSystem(IconManager):
             taskbar_thickness = thickness_vertical
         else:
             taskbar_thickness = 0
-        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - 357), self.Screen_y-342-taskbar_thickness
+        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - 357), self.screen_y-342-taskbar_thickness
         if end_x - start_x > 0:
             peak_x = peak_x-84
         else:
@@ -312,7 +286,7 @@ class CombatSystem(IconManager):
                     hit_detected = True
                     CombatSystem.damage(None, self)
             
-            if hit_db == False:
+            if not hit_db:
                 current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
                 if not DesktopUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
                     original_count = current_count
@@ -325,7 +299,7 @@ class CombatSystem(IconManager):
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, shortcut, pos)
             
 
-            if current_step >= Steps/2 and hit_db == False:
+            if current_step >= Steps/2 and not hit_db:
                 mouse = win32api.GetCursorPos()
                 hit_db = True
                 self.throw_shortcut(shortcut, mouse, speed, item_name)
@@ -409,7 +383,7 @@ class CombatSystem(IconManager):
                 mouse_x, mouse_y = win32api.GetCursorPos()
                 dx, dy = mouse_x - pivot_x, mouse_y - pivot_y
                 angle = math.degrees(math.atan2(dy, dx))
-                if frame1db == False:
+                if not frame1db:
                     self.particles_manager.play_star_pop(pivot_x, pivot_y, count=1)
                     frame1db = True
                 if elapsed > Indicator_Length:

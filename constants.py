@@ -69,6 +69,30 @@ class SharkoConstants:
     SPI_GETWORKAREA = 0x0030
     LVM_SETITEMPOSITION = 0x100F
     LVM_GETITEMCOUNT = 0x1004
+    
+    # Movement & Physics
+    WALKSPEED = 230  # Pixels per second
+    
+    # Audio
+    MIN_VOLUME = 0.1
+    
+    # Combat Mechanics
+    PARRY_WINDOW = 0.3  # seconds
+    PARRY_BLOCK_COOLDOWN = 0.75  # seconds
+    
+    # UI & Text Rendering
+    QUESTION_BOX_WIDTH = 255
+    QUESTION_BOX_HEIGHT = 140
+    QUESTION_BOX_TOP_Y = 9
+    QUESTION_BOX_OPTION1_Y = 96
+    QUESTION_BOX_OPTION2_Y = 126
+    QUESTION_BOX_OPTION_HEIGHT = 30
+    QUESTION_TEXT_HEIGHT = 80
+    TEXT_RENDER_PADDING = 0
+    TEXT_LINE_SPACING = 8
+    FONT_SIZE_MAX = 72
+    FONT_SIZE_MIN = 8
+    FRAME_DELAY_MS = 16  # Milliseconds between animation frames
 
 
     try:
