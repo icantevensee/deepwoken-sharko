@@ -1,19 +1,12 @@
 
-### This is the experimental branch for the sharko! So far there has been some progress on the boss bar, and the code has been organized.
+### This is the experimental branch for the sharko. The latest developments on the program will be pushed here.
 
-<img src="/img/1.png" width="300">
+### For information on how to use, refer to the main branch.
 
-### IMPORTANT: Middle click and hold to drag, double middle click for menu.
-
-### Features:
-- **Movement**: You can move the Sharko around the screen by clicking and holding the mouse wheel (middle button) while dragging.
-- **Menu Access**: To open the menu, double-click the mouse wheel (middle button).
-- **Animation**: The Sharko can animate through different states such as idle, walking, talking, and greeting.
-- **Interaction**: Users can interact with the Sharko by clicking on the GUI interface.
-- **Sound Effects**: The application incorporates sound effects for various actions.
-- **Customization**: The Sharko's appearance and behavior can be customized by modifying image files, and by adding new lines in the Lines and RemovalLines+IntroLine text files. Keep in mind that lines are randomized, and new lines will not necessarily instantly appear. Also, if you edit the lines while the sharko is active, the sharko will not percieve the new lines until you reopen it.
-- **Run on startup**: If you would like the sharko to run every time you turn on your computer, you must first you must create a shortcut to the sharko exectuable file, then copy that shortcut and put it in C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp
-
+### Progress:
+- **Code Organization**: Code has been split into multiple files, and a singlular type convention has been applied. I've also organized a bunch. There's still a little bit of work that needs to be done though
+- **New boss fight**: New boss fight that can be acessed with the fight option, so far there has been: A boss bar, jump attack, jump and hit desktop shortcut at mouse, and lazer attack added.
+- **General improvements**: Made improvements such as making the death animation particles not be cut off and optimizing some parts of code.
 <img src="/img/5.gif" width="400">
 
 ### Usage:
