@@ -1,3 +1,14 @@
+"""
+Sharko - Main Character Module
+
+Core implementation of Sharko, the interactive desktop character with features:
+- Idle, walking, and fighting animations
+- Boss battle system with health bar
+- Parry and block combat mechanics
+- Desktop icon manipulation and throwing
+- Sound effects and particle effects
+- Customizable movie mode and UI states
+"""
 from ctypes import windll, wintypes, byref
 import win32gui
 import win32api
@@ -44,9 +55,18 @@ except Exception:
     pass
 
 class Sharko(SharkoConstants, IconManager):
+    """Main interactive desktop character with animation, combat, and effects."""
     thrown_icons = set()
 
     def __init__(self, image_path, talking_path, greeting_path, removal_path):
+        """Initialize Sharko character with paths to animation assets.
+        
+        Args:
+            image_path: Path to idle/walking animation images
+            talking_path: Path to talking animation images
+            greeting_path: Path to greeting animation images
+            removal_path: Path to removal animation images
+        """
         #APPLICATION & GUI SETUP
         self.app = QApplication(sys.argv)
         self.window = tk.Tk()
@@ -141,13 +161,12 @@ class Sharko(SharkoConstants, IconManager):
         self.window.mainloop()
 
     def log_stats(self):
+        """Log current memory usage statistics."""
         mem_mb = self.process.memory_info().rss / (1024 * 1024)
         print(f"RAM: {mem_mb:.2f} MB")
 
     def load_cutscenes(self):
-        """
-        Load cutscene presets using dictionary format for clarity.
-        """
+        """Load and initialize cutscene animation presets with frames and timing."""
         self.CutscenePresets = {
             'InactiveCutscene': [
                 {"image": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle1.png')), "duration": 1000, "sound": "None"},
@@ -161,6 +180,7 @@ class Sharko(SharkoConstants, IconManager):
         }
 
     def load_images(self, image_path, talking_path, greeting_path, removal_path):
+        """Load all animation images from specified paths into state dictionaries."""
         self.CURRENT_IMAGES_PATH = image_path
         self.TALKING_SENTENCES_PATH = talking_path
         self.GREETING_SENTENCES_PATH = greeting_path
@@ -215,7 +235,13 @@ class Sharko(SharkoConstants, IconManager):
             'Pivot_Corals': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Corals.png')).convert("RGBA")
         }
 
-    def move_window_x(self,window, target_x):
+    def move_window_x(self, window, target_x):
+        """Animate character window movement to target X position.
+        
+        Args:
+            window: Tkinter window to move
+            target_x: Target X coordinate
+        """
         ANIMATION_DELAYOrig = self.ANIMATION_DELAY
         self.ANIMATION_DELAY = int(self.ANIMATION_DELAY/2)
         start_x = int(window.geometry().split('+')[-2])
@@ -252,6 +278,7 @@ class Sharko(SharkoConstants, IconManager):
         window.after(FRAME_DELAY_MS, step_move, 0, start_x)
         
     def create_gui(self):
+        """Create and configure the GUI elements (label, menus, window properties)."""
         self.label = tk.Label(self.window, bd=0, bg='#2a2d2a')
         self.label.configure(image=self.states['idle'][0])
         self.label.image = self.states['idle'][0]
@@ -285,6 +312,7 @@ class Sharko(SharkoConstants, IconManager):
             pass
 
     def animate(self):
+        """Update and render current animation frame based on character state."""
         if self.label.image is None:
             return
         if self.position_flip_trigger:
@@ -954,15 +982,13 @@ class Sharko(SharkoConstants, IconManager):
             self.fight_mode_active = True
             self.supress_right_clk = True
             if not self.active_bar:
-                self.active_bar = ScalableHealthBar()
+                #self.active_bar = ScalableHealthBar()
                 screen_w = windll.user32.GetSystemMetrics(0)
-                self.active_bar.resize(screen_w // 2, 200)
-                self.active_bar.slide_in()
+                #self.active_bar.resize(screen_w // 2, 200)
+                #self.active_bar.slide_in()
                 print("Boss Bar Created from external file.")
                 self.particles_manager = VFXManager()
-                self.warning_manager = MultiWarningOverlay()
-                self.particles_manager.play_block(500, 500)
-                self.particles_manager.play_parry(600, 500)
+                #self.warning_manager = MultiWarningOverlay()
             self.new_state('fight')
             self.fight_loop()
         else:
@@ -970,8 +996,8 @@ class Sharko(SharkoConstants, IconManager):
             self.supress_right_clk = False
             self.particles_manager.deinitialize()
             del self.particles_manager
-            self.warning_manager.deinitialize()
-            del self.warning_manager
+            #self.warning_manager.deinitialize()
+            #del self.warning_manager
             if getattr(self, '_fight_loop_after_id', None) is not None:
                 self.window.after_cancel(self._fight_loop_after_id)
                 self._fight_loop_after_id = None

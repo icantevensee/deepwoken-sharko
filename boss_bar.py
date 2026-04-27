@@ -1,3 +1,10 @@
+"""
+Boss Health Bar Module
+
+Provides a scalable, animated boss health bar overlay for the Sharko game.
+Features include smooth health fill animations, slide-in/out transitions,
+and customizable visual elements like markers, icons, and text.
+"""
 import sys
 import math
 import random
@@ -18,7 +25,10 @@ CENTER_ICON_PATH = "assets/UI/boss_bar_skull.png"
 FONT_PATH = "assets/fonts/Boss_Font.otf"
 
 class ScalableHealthBar(QWidget):
+    """Scalable health bar widget for boss battles with animations and effects."""
+    
     def __init__(self, parent=None):
+        """Initialize the health bar with transparent background and animations."""
         super().__init__(parent)
         
         # 1. Window Setup: Transparent, Always on Top, Click-Through
@@ -74,7 +84,7 @@ class ScalableHealthBar(QWidget):
         self.move(p)
 
     def slide_in(self):
-        """Slides the bar down. Call this to 'create' it on screen."""
+        """Slides the health bar down into view using animation. Call to display the bar."""
         self._pos_animation.stop() # Stop any current movement
         
         screen_w = windll.user32.GetSystemMetrics(0)
@@ -90,7 +100,7 @@ class ScalableHealthBar(QWidget):
         self._pos_animation.start()
 
     def slide_out_to_hide(self):
-        """Slides the bar up and hides it. Use this instead of destroy if you want to reuse it."""
+        """Slides the health bar up and hides it. Use instead of delete to reuse the bar."""
         self._pos_animation.stop()
         
         self._pos_animation.setStartValue(self.pos())
@@ -106,12 +116,14 @@ class ScalableHealthBar(QWidget):
         self._pos_animation.start()
 
     def update_health_fill(self):        
+        """Update the health fill animation frame."""
         self.update()
         # Smooth interpolation for the health bar fill
         if abs(self.percentage - self.current_percentage) < 0.001:
             self.current_percentage = self.percentage
 
     def paintEvent(self, event):
+        """Render the health bar with background, fill, markers, icon, and text."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         
@@ -170,27 +182,5 @@ class ScalableHealthBar(QWidget):
         painter.fillPath(path, QColor(255, 255, 255))
 
     def change_percentage(self):
-        """Randomizes health for demo purposes."""
+        """Update health percentage (used for demo/testing purposes)."""
         self.percentage = random.random()
-
-# --- MAIN EXECUTION ---
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    
-    screen_w = windll.user32.GetSystemMetrics(0)
-    
-    health_bar = ScalableHealthBar()
-    health_bar.resize(screen_w // 2, 200)
-    
-    health_bar.slide_in()
-
-    logic_timer = QTimer()
-    logic_timer.timeout.connect(health_bar.change_percentage)
-    logic_timer.start(1500)
-
-    QTimer.singleShot(2000, health_bar.slide_out_to_hide)
-    QTimer.singleShot(4000, health_bar.slide_in)
-    QTimer.singleShot(6000, health_bar.slide_out_to_hide)
-    
-
-    sys.exit(app.exec_())

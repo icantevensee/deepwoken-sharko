@@ -1,3 +1,14 @@
+"""
+Constants and Configuration Module
+
+Centralized configuration for the Sharko game including:
+- Animation and timing parameters
+- File paths for assets, images, and sounds
+- Combat mechanics settings (parry window, cooldowns)
+- UI parameters and text rendering settings
+- Windows API constants
+"""
+
 def _decode_escapes(s):
     """Decode escape sequences and HTML entities in strings"""
     if not isinstance(s, str):
@@ -16,7 +27,7 @@ def _decode_escapes(s):
     return s
 
 class SharkoConstants:
-    """Class constants and configuration"""
+    """Global constants and configuration for the Sharko game."""
     
     # Animation/timing
     FADE_STEP = 1
@@ -25,7 +36,7 @@ class SharkoConstants:
     IDLE_ANIMATION_DELAY = 20000
     GREETING_ANIMATION_DELAY = 8000
     REMOVAL_ANIMATION_DELAY = 3800
-    INACTIVE_TIME_REQUIREMENT = 0
+    INACTIVE_TIME_REQUIREMENT = 60
     
     # Window
     WINDOW_SIZE = "357x342"
@@ -69,6 +80,9 @@ class SharkoConstants:
     SPI_GETWORKAREA = 0x0030
     LVM_SETITEMPOSITION = 0x100F
     LVM_GETITEMCOUNT = 0x1004
+    LVM_GETITEMW = 0x1000 + 75
+    LVIF_TEXT = 0x0001
+    LVM_GETITEMTEXTW = 0x1000 + 115
     
     # Movement & Physics
     WALKSPEED = 230  # Pixels per second

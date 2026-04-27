@@ -1,8 +1,15 @@
+"""
+Icon Manager Module
+
+Manages desktop icon manipulation and throwing animations.
+Provides functionality to move desktop icons in trajectories
+with collision detection and hit registration.
+"""
 import math
 import time
 import threading
 import pythoncom
-from win32com.shell import shellcon
+from win32com.shell import shellcon  # type: ignore
 import win32gui
 import win32api
 from constants import SharkoConstants
@@ -13,7 +20,16 @@ throw_lock = threading.Lock()
 
 
 class IconManager:
-    def _throw_worker(self, index, target_pos,speed_factor,name):
+    """Manages desktop icon throwing and trajectory animation."""
+    def _throw_worker(self, index, target_pos, speed_factor, name):
+        """Worker thread for icon throwing animation with collision detection.
+        
+        Args:
+            index: Desktop icon index
+            target_pos: Target (x, y) position
+            speed_factor: Speed multiplier for animation
+            name: Icon name for tracking
+        """
         pythoncom.CoInitialize()
         with throw_lock:
             if name in self.thrown_icons:

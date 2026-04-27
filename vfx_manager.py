@@ -1,13 +1,33 @@
+"""
+Visual Effects Manager Module
+
+Manages particle systems and visual effects including:
+- Laser effects with fade animations
+- Particle types (sparkles, rings, blood, etc.)
+- Visual effect rendering and updates
+- Warning overlays for combat events
+"""
 import sys
 import os
 import random
 import math
-from PyQt5.QtWidgets import QApplication,QWidget
-from PyQt5.QtCore import Qt, QTimer,QRect, QRectF, QPointF, QVariantAnimation, QEasingCurve
+from PyQt5.QtWidgets import QApplication, QWidget
+from PyQt5.QtCore import Qt, QTimer, QRect, QRectF, QPointF, QVariantAnimation, QEasingCurve
 from PyQt5.QtGui import QPainter, QPixmap, QColor, QPen
 
 class Laser:
+    """Laser beam visual effect with fade in/out animation."""
+    
     def __init__(self, x, y, angle, color=QColor(0, 120, 255), start_offset=50):
+        """Initialize a laser effect.
+        
+        Args:
+            x: X coordinate of laser origin
+            y: Y coordinate of laser origin
+            angle: Direction angle of laser
+            color: RGB color of laser beam
+            start_offset: Distance from origin to start rendering
+        """
         self.origin = QPointF(float(x), float(y))
         self.angle = angle
         self.color = color
@@ -19,6 +39,7 @@ class Laser:
         self.fade_speed = 0.1    
 
     def update_fade(self):
+        """Update laser fade animation and return if still visible."""
         if self.state == "fading_in":
             self.alpha += self.fade_speed
             if self.alpha >= 1.0:
@@ -30,9 +51,19 @@ class Laser:
         return True
 
 class Particle:
+    """Particle sprite with various types and physics simulation."""
     __slots__ = ['pos', 'pixmap', 'p_type', 'alpha', 'elapsed', 'vel', 
                  'friction', 'rotation', 'rot_speed', 'scale', 'size', 'gravity']
+    
     def __init__(self, x, y, p_type, pixmap=None):
+        """Initialize a particle with type-specific properties and physics.
+        
+        Args:
+            x: X coordinate
+            y: Y coordinate
+            p_type: Particle type (sparkle, ring, spark, block, blood, laser_square, star)
+            pixmap: Optional image pixmap for rendering
+        """
         self.pos = QPointF(float(x), float(y))
         self.pixmap = pixmap
         self.p_type = p_type 
@@ -86,6 +117,11 @@ class Particle:
             self.friction = 0.96
 
     def update(self, dt):
+        """Update particle physics, position, and animation properties.
+        
+        Args:
+            dt: Delta time for frame update
+        """
         self.elapsed += dt
         if hasattr(self, 'gravity'):
             self.vel += self.gravity
@@ -247,40 +283,6 @@ class VFXManager(QWidget):
                 painter.drawPixmap(QRectF(-w/2, -h/2, w, h), p.pixmap, QRectF(p.pixmap.rect()))
             painter.restore()
 
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    vfx_manager = VFXManager()
-    
-    pivot_x, pivot_y = 600, 400
-    is_on = True
-    def toggle_laser():
-        global is_on
-        if is_on:
-            vfx_manager.remove_laser("test_beam")
-            print("Turning off...")
-        else:
-            print("Turning on...")
-        is_on = not is_on
-    from PyQt5.QtGui import QCursor
-    mouse = QCursor.pos()
-    vfx_manager.play_star_pop(mouse.x(), mouse.y(), count=1)
-    test_timer = QTimer()
-    def update_test():
-        if is_on:
-
-            dx, dy = mouse.x() - pivot_x, mouse.y() - pivot_y
-            angle = math.degrees(math.atan2(dy, dx))
-            vfx_manager.set_laser("test_beam", pivot_x, pivot_y, angle, offset=0)
-        
-    test_timer.timeout.connect(update_test)
-    test_timer.start(20)
-
-    toggle_timer = QTimer()
-    toggle_timer.timeout.connect(toggle_laser)
-    toggle_timer.start(3000)
-
-    sys.exit(app.exec_())
-
 
 class WarningInstance:
     """Helper class to track individual warning states."""
@@ -323,7 +325,7 @@ class WarningInstance:
 class MultiWarningOverlay(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.showFullScreen()
 
