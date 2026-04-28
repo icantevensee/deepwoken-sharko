@@ -9,40 +9,40 @@ Core implementation of Sharko, the interactive desktop character with features:
 - Sound effects and particle effects
 - Customizable movie mode and UI states
 """
-from ctypes import windll, wintypes, byref
-import win32gui
-import win32api
+from        ctypes import windll, wintypes, byref
+import      win32gui
+import      win32api
 
-import random
-import math
-import time
+import      random
+import      math
+import      time
 
-import tkinter as tk
-from tkinter import TclError
-import pygame
+import      tkinter as tk
+from        tkinter import TclError
+import      pygame
 
-import os
-import sys
+import      os
+import      sys
 
-from pynput import keyboard, mouse
+from        pynput import keyboard, mouse
 
-from PIL import Image, ImageDraw, ImageFont, ImageTk
-from PyQt5.QtWidgets import QApplication, QWidget
-from PyQt5.QtGui import QPixmap, QPainter, QImage
-from PyQt5.QtCore import Qt, QTimer
+from        PIL import Image, ImageDraw, ImageFont, ImageTk
+from        PyQt5.QtWidgets import QApplication, QWidget
+from        PyQt5.QtGui import QPixmap, QPainter, QImage
+from        PyQt5.QtCore import Qt, QTimer
 
-import threading
+import      threading
 
-from boss_bar import ScalableHealthBar
-from vfx_manager import VFXManager, MultiWarningOverlay
-from boss_battle import CombatSystem
+from        boss_bar import ScalableHealthBar
+from        vfx_manager import VFXManager, MultiWarningOverlay
+from        boss_battle import CombatSystem
 
-from constants import SharkoConstants
-from icons import IconManager
-from shortcut_utils import DesktopUtils
-from tile import Tile
+from        constants import SharkoConstants
+from        icons import IconManager
+from        shortcut_utils import DesktopUtils
+from        tile import Tile
 
-import psutil
+import      psutil
 
 
 throw_lock = threading.Lock()
@@ -68,7 +68,7 @@ class Sharko(SharkoConstants, IconManager):
             removal_path: Path to removal animation images
         """
         #APPLICATION & GUI SETUP
-        self.app = QApplication(sys.argv)
+        self.app    = QApplication(sys.argv)
         self.window = tk.Tk()
         
         #SCREEN & DISPLAY CONFIGURATION
@@ -96,21 +96,21 @@ class Sharko(SharkoConstants, IconManager):
         self.frame = 0
         
         #GAME STATE FLAGS
-        self.talking_disabled = False
-        self.cutscene_active = False
-        self.fight_mode_active = False
-        self.movie_mode_active = False
-        self.end = False
-        self.currently_moving = False
-        self.position_flip_trigger = False
+        self.talking_disabled       = False
+        self.cutscene_active        = False
+        self.fight_mode_active      = False
+        self.movie_mode_active      = False
+        self.end                    = False
+        self.currently_moving       = False
+        self.position_flip_trigger  = False
         
         #AUDIO SYSTEM
         self.sound_enabled = True
         self.sound_file = self.GREETING_SOUND
         pygame.init()
         pygame.mixer.set_num_channels(16)
-        self.sound_paths = {'end': self.END_TALKING_SOUND, 'start': self.START_TALKING_SOUND, 'greeting': self.GREETING_SOUND, 'clash': self.CLASH_SOUND, 'answer': self.ANSWER_SOUND, 'block_attempt': self.BLOCK_ATTEMPT_SOUND, 'parry': self.PARRY_SOUND, 'block': self.BLOCK_SOUND, 'hit': self.HIT_SOUND}
-        self.sounds_group = {name: pygame.mixer.Sound(path) for name, path in self.sound_paths.items()}
+        self.sound_paths    = {'end': self.END_TALKING_SOUND, 'start': self.START_TALKING_SOUND, 'greeting': self.GREETING_SOUND, 'clash': self.CLASH_SOUND, 'answer': self.ANSWER_SOUND, 'block_attempt': self.BLOCK_ATTEMPT_SOUND, 'parry': self.PARRY_SOUND, 'block': self.BLOCK_SOUND, 'hit': self.HIT_SOUND}
+        self.sounds_group   = {name: pygame.mixer.Sound(path) for name, path in self.sound_paths.items()}
         
         #MOVEMENT SYSTEM
         self.walking_enabled = True
@@ -120,23 +120,23 @@ class Sharko(SharkoConstants, IconManager):
         self.last_input_time = time.time()
         
         #PARRY AND BLOCK MECHANICS
-        self.parry_press_time = 0
-        self.parry_active_until = 0
-        self.last_parry_block_time = 0
-        self.blocking = False
-        self.block_active_until = 0
-        self.block_transition_callback = None
-        self.f_key_held = False
+        self.parry_press_time           = 0
+        self.parry_active_until         = 0
+        self.last_parry_block_time      = 0
+        self.block_active_until         = 0
+        self.block_transition_callback  = None
+        self.f_key_held                 = False
+        self.blocking                   = False
         
         #ASSET LOADING
-        self.load_images(image_path, talking_path, greeting_path, removal_path)
+        self._load_images(image_path, talking_path, greeting_path, removal_path)
         
         #GUI SETUP
-        self.create_gui()
+        self._create_gui()
         
         #ANIMATION & CALLBACKS
-        self._idle_after_id = None
-        self._fight_loop_after_id = None
+        self._idle_after_id         = None
+        self._fight_loop_after_id   = None
         
         #STARTUP SEQUENCE
         self.animate()
@@ -152,8 +152,8 @@ class Sharko(SharkoConstants, IconManager):
         self.process = psutil.Process(os.getpid())
         
         #INPUT LISTENERS
-        keyboard_listener = keyboard.Listener(on_press=self.on_press, on_release=self.on_release)
-        mouse_listener = mouse.Listener(on_move=self.on_click,on_click=self.on_click)
+        keyboard_listener   = keyboard.Listener(on_press=self._on_f_pressed, on_release=self._on_f_released)
+        mouse_listener      = mouse.Listener(on_move=self._on_action,on_click=self._on_action)
 
         keyboard_listener.start()
         mouse_listener.start()
@@ -165,7 +165,7 @@ class Sharko(SharkoConstants, IconManager):
         mem_mb = self.process.memory_info().rss / (1024 * 1024)
         print(f"RAM: {mem_mb:.2f} MB")
 
-    def load_cutscenes(self):
+    def _load_cutscenes(self):
         """Load and initialize cutscene animation presets with frames and timing."""
         self.CutscenePresets = {
             'InactiveCutscene': [
@@ -179,13 +179,13 @@ class Sharko(SharkoConstants, IconManager):
             ],
         }
 
-    def load_images(self, image_path, talking_path, greeting_path, removal_path):
+    def _load_images(self, image_path, talking_path, greeting_path, removal_path):
         """Load all animation images from specified paths into state dictionaries."""
-        self.CURRENT_IMAGES_PATH = image_path
-        self.TALKING_SENTENCES_PATH = talking_path
-        self.GREETING_SENTENCES_PATH = greeting_path
-        self.REMOVAL_SENTENCES_PATH = removal_path
-        self.load_cutscenes()
+        self.CURRENT_IMAGES_PATH        = image_path
+        self.TALKING_SENTENCES_PATH     = talking_path
+        self.GREETING_SENTENCES_PATH    = greeting_path
+        self.REMOVAL_SENTENCES_PATH     = removal_path
+        self._load_cutscenes()
 
         self.states = {
             'idle': [tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle1.png')),
@@ -242,26 +242,27 @@ class Sharko(SharkoConstants, IconManager):
             window: Tkinter window to move
             target_x: Target X coordinate
         """
-        ANIMATION_DELAYOrig = self.ANIMATION_DELAY
+        original_animation_delay = self.ANIMATION_DELAY
         self.ANIMATION_DELAY = int(self.ANIMATION_DELAY/2)
         start_x = int(window.geometry().split('+')[-2])
 
-        total_dx = target_x - start_x
-        duration_ms = int(math.ceil(abs(total_dx)/self.WALKSPEED)*1000)   
-        FRAME_DELAY_MS = self.FRAME_DELAY_MS 
-        num_steps = max(1, duration_ms // FRAME_DELAY_MS)
-        step_dx = total_dx / num_steps
+        total_dx        = target_x - start_x
+        duration_ms     = int(math.ceil(abs(total_dx)/self.WALKSPEED)*1000)   
+        FRAME_DELAY_MS  = self.FRAME_DELAY_MS 
+        num_steps       = max(1, duration_ms // FRAME_DELAY_MS)
+        step_dx         = total_dx / num_steps
+
         def step_move(current_step, current_x):
             if self.fight_mode_active:
                 return
 
             if self.end or self.currently_moving:
-                self.ANIMATION_DELAY = ANIMATION_DELAYOrig
+                self.ANIMATION_DELAY = original_animation_delay
                 self.window.after(FRAME_DELAY_MS, self.idle_state)
                 return
 
             if current_step >= num_steps:
-                self.ANIMATION_DELAY = ANIMATION_DELAYOrig
+                self.ANIMATION_DELAY = original_animation_delay
                 window.geometry(f'+{target_x}+{window.geometry().split('+')[-1]}')
                 if self.current_facing == "Right" :
                     self.window.after(FRAME_DELAY_MS, self.rotate_right)
@@ -277,7 +278,7 @@ class Sharko(SharkoConstants, IconManager):
             window.after(FRAME_DELAY_MS, step_move, current_step + 1, current_x + step_dx)
         window.after(FRAME_DELAY_MS, step_move, 0, start_x)
         
-    def create_gui(self):
+    def _create_gui(self):
         """Create and configure the GUI elements (label, menus, window properties)."""
         self.label = tk.Label(self.window, bd=0, bg='#2a2d2a')
         self.label.configure(image=self.states['idle'][0])
@@ -286,9 +287,9 @@ class Sharko(SharkoConstants, IconManager):
 
         self.menu = tk.Menu(self.window, tearoff=0)
         self.Movie_menu = tk.Menu(self.window, tearoff=0)
-        self.Movie_menu.add_command(label='Off', command=self.MovieOff)
-        self.Movie_menu.add_command(label='On(Glasses)', command=self.MovieOn)
-        self.Movie_menu.add_command(label='On(No glasses)', command=self.MovieOn1)
+        self.Movie_menu.add_command(label='Off', command=self.movie_off)
+        self.Movie_menu.add_command(label='On(Glasses)', command=self.movie_on_g)
+        self.Movie_menu.add_command(label='On(No glasses)', command=self.movie_on_ng)
         self.menu.add_cascade(label='Movie mode', menu=self.Movie_menu)
         self.menu.add_command(label='Fight', command=self.toggle_fight_mode)
         self.menu.add_command(label='Sounds (Off/On)', command=self.sounds_logics)
@@ -303,9 +304,9 @@ class Sharko(SharkoConstants, IconManager):
         
 
 
-        self.label.bind("<ButtonPress-2>", self.move1)
-        self.label.bind("<ButtonRelease-2>", self.release)
-        self.label.bind("<B2-Motion>", self.move2)
+        self.label.bind("<ButtonPress-2>", self._middle_button_pressed)
+        self.label.bind("<ButtonRelease-2>", self._middle_button_released)
+        self.label.bind("<B2-Motion>", self._middle_button_hold_move)
         try:
             self.label.bind("<Double-Button-2>", lambda event: self.menu.post(event.x_root, event.y_root))
         except (TclError, AttributeError):
@@ -344,9 +345,9 @@ class Sharko(SharkoConstants, IconManager):
         self.cutscene_active = True
         self.new_state('cutscene')
         Cutscene = self.CutscenePresets[cutscenepreset]
-        self.PlayCutsceneFrame(Cutscene, 0,cutscenepreset)
+        self._play_cutscene_frame(Cutscene, 0,cutscenepreset)
 
-    def PlayCutsceneFrame(self, Cutscene, current_frame, cutscenepreset):
+    def _play_cutscene_frame(self, Cutscene, current_frame, cutscenepreset):
         if cutscenepreset == 'InactiveCutscene':
             if time.time() - self.last_input_time < self.INACTIVE_TIME_REQUIREMENT:
                 if current_frame < 6:
@@ -354,21 +355,21 @@ class Sharko(SharkoConstants, IconManager):
                 elif current_frame == len(Cutscene):
                     self.cutscene_active = False
                     self.talking_disabled = False
-                    self.load_cutscenes()
+                    self._load_cutscenes()
                     self.idle_state()
                     self.animate()
                     return
             elif current_frame == len(Cutscene):
                 self.cutscene_active = False
                 self.talking_disabled = True
-                self.load_cutscenes()
+                self._load_cutscenes()
                 self.idle_state()
                 self.animate()
                 return
 
         if current_frame == len(Cutscene):
             self.cutscene_active = False
-            self.load_cutscenes()
+            self._load_cutscenes()
             self.idle_state()
             self.animate()
             return
@@ -378,9 +379,9 @@ class Sharko(SharkoConstants, IconManager):
         # Handle repeating cutscene frames
         Sound_Cleared = False
         if current_frame_data.get("type") == "repeat":
-            image = current_frame_data["image1"]
-            duration = current_frame_data["interval"]
-            sound = current_frame_data["sound"]
+            image       = current_frame_data["image1"]
+            duration    = current_frame_data["interval"]
+            sound       = current_frame_data["sound"]
             
             # Decrement repeat count
             current_frame_data["repeat_count"] -= 1
@@ -397,9 +398,9 @@ class Sharko(SharkoConstants, IconManager):
                 current_frame += 1
         else:
             # Handle simple frames
-            image = current_frame_data["image"]
-            duration = current_frame_data["duration"]
-            sound = current_frame_data["sound"]
+            image       = current_frame_data["image"]
+            duration    = current_frame_data["duration"]
+            sound       = current_frame_data["sound"]
             Sound_Cleared = True
             current_frame += 1
         
@@ -413,7 +414,7 @@ class Sharko(SharkoConstants, IconManager):
         
         self.label.configure(image=image)
         self.label.image = image
-        self.window.after(duration, self.PlayCutsceneFrame, Cutscene, current_frame, cutscenepreset)
+        self.window.after(duration, self._play_cutscene_frame, Cutscene, current_frame, cutscenepreset)
 
     def clear_talking(self,state):
         self.states[state] = []
@@ -431,12 +432,23 @@ class Sharko(SharkoConstants, IconManager):
             except (TclError, AttributeError):
                 pass
 
-    def move1(self, event):
+    def _middle_button_pressed(self, event):
         if self.fight_mode_active or self.cutscene_active:
             return
         self.y = event.y
         self.x = event.x
         self.currently_moving = True
+
+    def _middle_button_released(self, event):
+        self.y = event.y
+        self.currently_moving = False
+
+    def _middle_button_hold_move(self, event):
+        if self.fight_mode_active or self.cutscene_active:
+            return
+        x = self.window.winfo_pointerx() - self.x
+        y = self.window.winfo_pointery() - self.y
+        self.window.geometry(f"+{x}+{y}")
 
     def _handle_question_click(self, event):
         if not getattr(self, 'question_active', False):
@@ -474,29 +486,18 @@ class Sharko(SharkoConstants, IconManager):
         except (TclError, ValueError):
             self._idle_after_id = None
 
-    def release(self, event):
-        self.y = event.y
-        self.currently_moving = False
-
-    def move2(self, event):
-        if self.fight_mode_active or self.cutscene_active:
-            return
-        x = self.window.winfo_pointerx() - self.x
-        y = self.window.winfo_pointery() - self.y
-        self.window.geometry(f"+{x}+{y}")
-
     def new_state(self, new_state):
         self.current_state = new_state
 
-    def MovieOff(self):
+    def movie_off(self):
         self.movie_mode_active = False
         self.idle_state()
 
-    def MovieOn(self):
+    def movie_on_g(self):
         self.movie_mode_active = True
         self.new_state('MovieG')
     
-    def MovieOn1(self):
+    def movie_on_ng(self):
         self.movie_mode_active = True
         self.new_state('MovieNG')
 
@@ -538,7 +539,7 @@ class Sharko(SharkoConstants, IconManager):
         except (AttributeError, RuntimeError):
             pass
 
-    def on_press(self, key):
+    def _on_f_pressed(self, key):
         self.last_input_time = time.time()
         self.talking_disabled = False
         try:
@@ -579,7 +580,7 @@ class Sharko(SharkoConstants, IconManager):
         except AttributeError:
             pass
 
-    def on_release(self, key):
+    def _on_f_released(self, key):
         # Handle parry key release (f)
         try:
             if key.char == 'f':
@@ -598,7 +599,7 @@ class Sharko(SharkoConstants, IconManager):
         except AttributeError:
             pass
 
-    def on_click(self,x, y, button):
+    def _on_action(self,x, y, button):
         if button == mouse.Button.right and self.supress_right_clk:
             mouse.Listener.suppress_event(self)
         self.last_input_time = time.time()
@@ -627,12 +628,12 @@ class Sharko(SharkoConstants, IconManager):
     def _should_transition_to_idle(self) -> bool:
         """Check if current state should transition to idle state."""
         is_talking_like = self.current_state in ['talking', 'greeting', 'removal']
-        is_cutscene = self.current_state == 'cutscene' and not self.cutscene_active
-        is_walking = self.current_state == 'walking'
-        is_movie = (self.current_state == 'MovieG' and not self.movie_mode_active) or \
-                   (self.current_state == 'MovieNG' and not self.movie_mode_active)
-        is_limbo = self.current_state == 'Limbo'
-        is_fight = self.current_state == 'fight' and not self.fight_mode_active
+        is_cutscene     = self.current_state == 'cutscene' and not self.cutscene_active
+        is_walking      = self.current_state == 'walking'
+        is_movie        = (self.current_state == 'MovieG' and not self.movie_mode_active) or \
+                          (self.current_state == 'MovieNG' and not self.movie_mode_active)
+        is_limbo        = self.current_state == 'Limbo'
+        is_fight        = self.current_state == 'fight' and not self.fight_mode_active
         return is_talking_like or is_cutscene or is_walking or is_movie or is_limbo or is_fight
     
     def idle_state(self):
@@ -680,20 +681,16 @@ class Sharko(SharkoConstants, IconManager):
         self.add_talking_sentences(Question_Lines,'talking',3)
 
     def add_talking_sentences(self,sentence,state,IsQuestion):
-
         if not hasattr(self, 'Lines') or not self.Lines:
             return
-        
         box_w, box_h = self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT
-
-        def render_text_image(text, size):
+        def _render_text_image(text, size):
             img = Image.new('RGBA', (size[0], size[1]), (0, 0, 0, 0))
             draw = ImageDraw.Draw(img)
 
-            base_font_path = self.FONT
-
-            padding = self.TEXT_RENDER_PADDING
-            line_spacing = self.TEXT_LINE_SPACING
+            base_font_path  = self.FONT
+            padding         = self.TEXT_RENDER_PADDING
+            line_spacing    = self.TEXT_LINE_SPACING
 
             for font_size in range(self.FONT_SIZE_MAX, self.FONT_SIZE_MIN, -1):
                 font = ImageFont.truetype(base_font_path, font_size)
@@ -753,21 +750,21 @@ class Sharko(SharkoConstants, IconManager):
 
         if IsQuestion == 3:
             try:
-                question_text = sentence[0]
-                option1_text = sentence[1]
-                option2_text = sentence[2]
-                answer1_text = sentence[3]
-                answer2_text = sentence[4]
+                question_text   = sentence[0]
+                option1_text    = sentence[1]
+                option2_text    = sentence[2]
+                answer1_text    = sentence[3]
+                answer2_text    = sentence[4]
             except Exception:
                 return
 
-            q_img = render_text_image(question_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_TEXT_HEIGHT))
-            opt1_img = render_text_image(option1_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
-            opt2_img = render_text_image(option2_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
+            q_img       = _render_text_image(question_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_TEXT_HEIGHT))
+            opt1_img    = _render_text_image(option1_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
+            opt2_img    = _render_text_image(option2_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
 
             try:
-                base1_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')
-                base2_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png')
+                base1_path  = os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')
+                base2_path  = os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png')
                 base1 = Image.open(base1_path).convert('RGBA')
                 base2 = Image.open(base2_path).convert('RGBA')
             except Exception:
@@ -788,7 +785,7 @@ class Sharko(SharkoConstants, IconManager):
                     return
                 return
 
-            def composite_three(base_img):
+            def _composite_three(base_img):
                 b = base_img.copy()
                 if self.current_facing == "Left":
                     x = 97
@@ -799,8 +796,8 @@ class Sharko(SharkoConstants, IconManager):
                 b.paste(opt2_img, (x, self.QUESTION_BOX_OPTION2_Y), opt2_img)
                 return b
 
-            comp1 = composite_three(base1)
-            comp2 = composite_three(base2)
+            comp1 = _composite_three(base1)
+            comp2 = _composite_three(base2)
 
             try:
                 tk_img1 = ImageTk.PhotoImage(comp1)
@@ -817,7 +814,7 @@ class Sharko(SharkoConstants, IconManager):
                 pass
             return
 
-        text_img = render_text_image(sentence, (box_w, box_h))
+        text_img = _render_text_image(sentence, (box_w, box_h))
         try:
             base1_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')
             base2_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png')
@@ -948,11 +945,11 @@ class Sharko(SharkoConstants, IconManager):
         sys.exit(self.app.exec_())
 
     def rotate_right(self):
-        new_image_path = "assets/mirror_sharko/"
-        new_talking_path = "assets/mirror_sentences/talking/"
-        new_greeting_path = "assets/mirror_sentences/greeting/"
-        new_removal_path = "assets/mirror_sentences/removal/"
-        self.load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
+        new_image_path      = "assets/mirror_sharko/"
+        new_talking_path    = "assets/mirror_sentences/talking/"
+        new_greeting_path   = "assets/mirror_sentences/greeting/"
+        new_removal_path    = "assets/mirror_sentences/removal/"
+        self._load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
         self.current_facing = "Left"
         self.x = 0
         self.position_flip_trigger = True
@@ -963,11 +960,11 @@ class Sharko(SharkoConstants, IconManager):
         
 
     def rotate_left(self):
-        new_image_path = "assets/sharko/"
-        new_talking_path = "assets/sentences/talking/"
-        new_greeting_path = "assets/sentences/greeting/"
-        new_removal_path = "assets/sentences/removal/"
-        self.load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
+        new_image_path      = "assets/sharko/"
+        new_talking_path    = "assets/sentences/talking/"
+        new_greeting_path   = "assets/sentences/greeting/"
+        new_removal_path    = "assets/sentences/removal/"
+        self._load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
         self.current_facing = "Right"
         self.x = self.screen_x-359
         self.position_flip_trigger = True
@@ -982,13 +979,13 @@ class Sharko(SharkoConstants, IconManager):
             self.fight_mode_active = True
             self.supress_right_clk = True
             if not self.active_bar:
-                #self.active_bar = ScalableHealthBar()
+                self.active_bar = ScalableHealthBar()
                 screen_w = windll.user32.GetSystemMetrics(0)
-                #self.active_bar.resize(screen_w // 2, 200)
-                #self.active_bar.slide_in()
+                self.active_bar.resize(screen_w // 2, 200)
+                self.active_bar.slide_in()
                 print("Boss Bar Created from external file.")
                 self.particles_manager = VFXManager()
-                #self.warning_manager = MultiWarningOverlay()
+                self.warning_manager = MultiWarningOverlay()
             self.new_state('fight')
             self.fight_loop()
         else:
@@ -996,8 +993,8 @@ class Sharko(SharkoConstants, IconManager):
             self.supress_right_clk = False
             self.particles_manager.deinitialize()
             del self.particles_manager
-            #self.warning_manager.deinitialize()
-            #del self.warning_manager
+            self.warning_manager.deinitialize()
+            del self.warning_manager
             if getattr(self, '_fight_loop_after_id', None) is not None:
                 self.window.after_cancel(self._fight_loop_after_id)
                 self._fight_loop_after_id = None
@@ -1026,7 +1023,6 @@ class Sharko(SharkoConstants, IconManager):
         )
         closest, num_icons = self.get_closest_icons(1)
         screen_w = win32api.GetSystemMetrics(0)
-        screen_h = win32api.GetSystemMetrics(1)
         desktop_working_area = wintypes.RECT()
         windll.user32.SystemParametersInfoW(self.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
@@ -1047,9 +1043,9 @@ class Sharko(SharkoConstants, IconManager):
             """Schedule the next attack 2 seconds after this one finishes"""
             self._fight_loop_after_id = self.window.after(2000, self.fight_loop)
         self.log_stats()
-        #CombatSystem.Jump(self,[random.randint(350, screen_w - 350), work_area_height - 343], 1)
-        CombatSystem.JumpAndHit(self,item_pos,closest[0],0.4,on_complete=schedule_next_attack)
-        #CombatSystem.Lazer(self,10000,on_complete=schedule_next_attack)
+        #CombatSystem.jump(self,[random.randint(350, screen_w - 350), work_area_height - 343], 0.4,on_complete=schedule_next_attack)
+        CombatSystem.jump_and_hit(self,item_pos,closest[0],0.4,on_complete=schedule_next_attack)
+        #CombatSystem.lazer(self,10000,on_complete=schedule_next_attack)
         
 
 

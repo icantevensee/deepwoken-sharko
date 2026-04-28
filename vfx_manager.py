@@ -7,13 +7,12 @@ Manages particle systems and visual effects including:
 - Visual effect rendering and updates
 - Warning overlays for combat events
 """
-import sys
-import os
-import random
-import math
-from PyQt5.QtWidgets import QApplication, QWidget
-from PyQt5.QtCore import Qt, QTimer, QRect, QRectF, QPointF, QVariantAnimation, QEasingCurve
-from PyQt5.QtGui import QPainter, QPixmap, QColor, QPen
+import      os
+import      random
+import      math
+from        PyQt5.QtWidgets import QWidget
+from        PyQt5.QtCore import Qt, QTimer, QRect, QRectF, QPointF, QVariantAnimation, QEasingCurve
+from        PyQt5.QtGui import QPainter, QPixmap, QColor, QPen
 
 class Laser:
     """Laser beam visual effect with fade in/out animation."""
@@ -28,15 +27,15 @@ class Laser:
             color: RGB color of laser beam
             start_offset: Distance from origin to start rendering
         """
-        self.origin = QPointF(float(x), float(y))
-        self.angle = angle
-        self.color = color
-        self.thickness = 30
-        self.flicker = 0.0
-        self.start_offset = start_offset
-        self.alpha = 0.0  
-        self.state = "fading_in" 
-        self.fade_speed = 0.1    
+        self.origin         = QPointF(float(x), float(y))
+        self.angle          = angle
+        self.color          = color
+        self.thickness      = 30
+        self.flicker        = 0.0
+        self.start_offset   = start_offset
+        self.alpha          = 0.0  
+        self.fade_speed     = 0.1    
+        self.state          = "fading_in" 
 
     def update_fade(self):
         """Update laser fade animation and return if still visible."""
@@ -74,47 +73,47 @@ class Particle:
             self.scale, self.vel, self.friction = 0.0, QPointF(0, 0), 1.0
             self.rotation = random.uniform(0, 360)
         elif p_type == 'ring':
-            self.scale = random.uniform(0.12, 0.18) 
-            self.rot_speed = random.uniform(8, 15) * random.choice([-1, 1])
+            self.scale              = random.uniform(0.12, 0.18) 
+            self.rot_speed          = random.uniform(8, 15) * random.choice([-1, 1])
             self.vel, self.friction = QPointF(0, 0), 1.0
-            self.rotation = random.uniform(0, 360)
+            self.rotation           = random.uniform(0, 360)
         elif p_type == 'spark':
-            angle = random.uniform(0, 2 * math.pi)
-            speed = random.uniform(4, 10) 
-            self.vel = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
+            angle                     = random.uniform(0, 2 * math.pi)
+            speed                     = random.uniform(4, 10) 
+            self.vel                  = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
             self.scale, self.friction = random.uniform(0.015, 0.04), 0.82 
-            self.rotation = math.degrees(angle) + 90
+            self.rotation             = math.degrees(angle) + 90
         elif p_type == 'block':
-            angle = random.uniform(0, 2 * math.pi)
-            speed = random.uniform(5, 12)
-            self.vel = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
-            self.friction = 0.84
-            self.size = random.uniform(6, 12)
-            self.rotation = random.uniform(0, 360)
-            self.rot_speed = random.uniform(-15, 15)
+            angle           = random.uniform(0, 2 * math.pi)
+            speed           = random.uniform(5, 12)
+            self.vel        = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
+            self.friction   = 0.84
+            self.size       = random.uniform(6, 12)
+            self.rotation   = random.uniform(0, 360)
+            self.rot_speed  = random.uniform(-15, 15)
         elif p_type == 'blood':
-            angle = random.uniform(0, 2 * math.pi) 
-            speed = random.uniform(4, 12)
-            self.vel = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
-            self.gravity = QPointF(0, 0.2) 
-            self.friction = 0.94 
-            self.size = random.uniform(4, 10)
-            self.rotation = random.uniform(0, 360)
-            self.rot_speed = random.uniform(-15, 15)
+            angle           = random.uniform(0, 2 * math.pi) 
+            speed           = random.uniform(4, 12)
+            self.vel        = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
+            self.gravity    = QPointF(0, 0.2) 
+            self.friction   = 0.94 
+            self.size       = random.uniform(4, 10)
+            self.rotation   = random.uniform(0, 360)
+            self.rot_speed  = random.uniform(-15, 15)
         elif p_type == 'laser_square':
-            angle = random.uniform(0, 2 * math.pi)
-            speed = random.uniform(2, 8)
-            self.vel = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
-            self.friction = 0.92
-            self.size = random.uniform(10, 20)
-            self.rotation = random.uniform(0, 360)
+            angle           = random.uniform(0, 2 * math.pi)
+            speed           = random.uniform(2, 8)
+            self.vel        = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
+            self.friction   = 0.92
+            self.size       = random.uniform(10, 20)
+            self.rotation   = random.uniform(0, 360)
             self.rot_speed = random.uniform(-10, 10)
         elif p_type == 'star':
-            self.scale = 0.0
-            self.rotation = random.uniform(0, random.uniform(0, 360))
-            self.rot_speed = random.uniform(-15, 15)
-            self.vel = QPointF(0,0)
-            self.friction = 0.96
+            self.scale      = 0.0
+            self.rotation   = random.uniform(0, random.uniform(0, 360))
+            self.rot_speed  = random.uniform(-15, 15)
+            self.vel        = QPointF(0,0)
+            self.friction   = 0.96
 
     def update(self, dt):
         """Update particle physics, position, and animation properties.

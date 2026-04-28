@@ -7,18 +7,18 @@ Provides Windows desktop manipulation utilities for:
 - Window handle operations
 - Desktop property queries and modifications
 """
-import ctypes
-import os
-import time
-import win32gui
-import win32process
-import winshell
-from ctypes import wintypes
-from win32com.client import Dispatch
-import pythoncom
-import win32com.client as wcomcli
-from win32com.shell import shell, shellcon  # type: ignore
-from constants import SharkoConstants
+import      ctypes
+import      os
+import      time
+import      win32gui
+import      win32process
+import      winshell
+from        ctypes import wintypes
+from        win32com.client import Dispatch
+import      pythoncom
+import      win32com.client as wcomcli
+from        win32com.shell import shell, shellcon  # type: ignore
+from        constants import SharkoConstants
 
 
 class DesktopUtils:

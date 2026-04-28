@@ -5,15 +5,15 @@ Manages desktop icon manipulation and throwing animations.
 Provides functionality to move desktop icons in trajectories
 with collision detection and hit registration.
 """
-import math
-import time
-import threading
-import pythoncom
-from win32com.shell import shellcon  # type: ignore
-import win32gui
-import win32api
-from constants import SharkoConstants
-from shortcut_utils import DesktopUtils
+import      math
+import      time
+import      threading
+import      pythoncom
+from        win32com.shell import shellcon  # type: ignore
+import      win32gui
+import      win32api
+from        constants import SharkoConstants
+from        shortcut_utils import DesktopUtils
 
 
 throw_lock = threading.Lock()

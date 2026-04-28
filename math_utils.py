@@ -1,8 +1,8 @@
 """
 Mathematical utilities for bezier curves and trajectory calculations
 """
-import numpy as np
-import math
+import      numpy as np
+import      math
 
 
 class MathUtils:
@@ -22,9 +22,9 @@ class MathUtils:
         Returns:
             Tuple of (B function, control point P1)
         """
-        P0 = np.asarray(P0, dtype=float)
-        Pmid = np.asarray(Pmid, dtype=float)
-        P2 = np.asarray(P2, dtype=float)
+        P0      = np.asarray(P0, dtype=float)
+        Pmid    = np.asarray(Pmid, dtype=float)
+        P2      = np.asarray(P2, dtype=float)
 
         if not (0 < tm < 1):
             raise ValueError("tm must be strictly between 0 and 1")
@@ -111,10 +111,10 @@ class MathUtils:
         B, P1 = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
         L2 = MathUtils.quadratic_length(P0, P1, P2, n=2000)
         
-        T = 0.75 * (L2 / (speed * 1800)) ** 0.4
-        Steps = math.floor(T * fps)
-        dt = T / Steps
-        ts = np.linspace(0, 1, Steps)
-        points = B(ts)
+        T       = 0.75 * (L2 / (speed * 1800)) ** 0.4
+        Steps   = math.floor(T * fps)
+        dt      = T / Steps
+        ts      = np.linspace(0, 1, Steps)
+        points  = B(ts)
         
         return points, Steps, dt

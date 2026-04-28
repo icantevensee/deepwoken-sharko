@@ -1,23 +1,24 @@
-import time
-import math
-import numpy as np
+import      time
+import      math
+import      numpy as np
 
-import win32api
-import win32gui
-from ctypes import windll, wintypes, byref
-from PIL import Image, ImageTk
+import      win32api
+import      win32gui
+from        ctypes import windll, wintypes, byref
+from        PIL import Image, ImageTk
 
-from icons import IconManager
-from math_utils import MathUtils
+from        icons import IconManager
+from        math_utils import MathUtils
 
 
-from shortcut_utils import DesktopUtils
-from constants import SharkoConstants
+from        shortcut_utils import DesktopUtils
+from        constants import SharkoConstants
 
 
 class CombatSystem(IconManager):
     
-    def damage(fakeself,self): #fakeself is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
+    @staticmethod
+    def damage(self): #@staticmethod is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
         current_time = time.time()
         mouse_x, mouse_y = win32api.GetCursorPos()
         
@@ -77,46 +78,43 @@ class CombatSystem(IconManager):
         except Exception as e:
             pass
 
-    def Jump(self,jump_end,speed,on_complete=None):
+    def jump(self,jump_end,speed,on_complete=None):
         end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
-        dist = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
-        screen_height = windll.user32.GetSystemMetrics(1)
-        screen_width = windll.user32.GetSystemMetrics(0) 
-        screen_diagonal = math.sqrt(screen_height**2+screen_width**2)
-        peak_x, peak_y = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screen_diagonal)*0.7)
+        dist                = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
+        screen_height       = windll.user32.GetSystemMetrics(1)
+        screen_width        = windll.user32.GetSystemMetrics(0)
+        screen_diagonal     = math.sqrt(screen_height**2+screen_width**2)
+        peak_x, peak_y      = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screen_diagonal)*0.7)
         if end_x - start_x > 0:
             peak_x = peak_x-84
         else:
             peak_x = peak_x-266
 
-        P0 = (start_x, start_y)
-        Pmid = (peak_x, peak_y)
-        P2 = (end_x, end_y)
-        B, P1 = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
-        L2 = MathUtils.quadratic_length(P0, P1, P2, n=2000)
+        P0      = (start_x, start_y)
+        Pmid    = (peak_x, peak_y)
+        P2      = (end_x, end_y)
+        B, P1   = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
+        L2      = MathUtils.quadratic_length(P0, P1, P2, n=2000)
         
-        T = 0.75*(L2/(speed*1800))**0.4
-        Steps = math.floor(T*30)
-        dt = T/Steps
+        T       = 0.75*(L2/(speed*1800))**0.4
+        Steps   = math.floor(T*30)
+        dt      = T/Steps
         ts = np.linspace(0, 1, Steps)
-        points = B(ts)
-        current_step = 2
-        img_pth = self.CURRENT_IMAGES_PATH
+        points  = B(ts)
+        hit_detected    = False
+        sprite_width    = 165
+        sprite_height   = 165
+        current_step    = 2
+        cached_images = self.jump_images
         offset = 0
-        hit_detected = False
-        sprite_width = 165
-        sprite_height = 165
         if end_x > start_x:
-            img_pth = self.ALT_IMAGES_PATH
+            cached_images = self.alt_jump_images
             offset = int(359/2)
         
-        cached_images = self.alt_jump_images if img_pth == self.ALT_IMAGES_PATH else self.jump_images
-        frame_counter = 0
         last_image = None
         
-        def Step_move(current_step, hit_detected,img_pth,offset):
-            nonlocal frame_counter, last_image
-            frame_counter += 1
+        def step_move(current_step, hit_detected, offset, cached_images):
+            nonlocal last_image
             current_x = math.floor(points[current_step-1][0])
             current_y = math.floor(points[current_step-1][1])
             previous_x = 0
@@ -129,10 +127,10 @@ class CombatSystem(IconManager):
                 slope = (current_y-previous_y)/math.fabs(current_x-previous_x)*-1
             if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
                 if current_x-previous_x-2 > 0:
-                    img_pth = self.ALT_IMAGES_PATH
+                    cached_images = self.alt_jump_images
                     offset = int(359/2)
                 elif current_x-previous_x+2 < 0:
-                    img_pth = self.CURRENT_IMAGES_PATH
+                    cached_images = self.jump_images
                     offset = 0
 
             new_image = None
@@ -152,34 +150,34 @@ class CombatSystem(IconManager):
             
             self.window.geometry(f'+{current_x+offset}+{current_y}')
             
-            if not hit_detected and frame_counter % 2 == 0:
+            if not hit_detected:
                 mouse_x, mouse_y = win32api.GetCursorPos()
                 sprite_x = current_x + offset
                 sprite_y = current_y
-                if img_pth == self.ALT_IMAGES_PATH:
-                    sprite_x += 192
+                if cached_images == self.alt_jump_images:
+                    sprite_x += 0
                     sprite_y += 178
                 else:
-                    sprite_x += 0
-                    sprite_y += 0
+                    sprite_x += 190
+                    sprite_y += 178
                 
                 if (sprite_x <= mouse_x <= sprite_x + sprite_width and 
                     sprite_y <= mouse_y <= sprite_y + sprite_height):
                     hit_detected = True
-                    CombatSystem.damage(None, self)
+                    CombatSystem.damage(self)
             
             current_step = current_step + 1
             if current_step < Steps:
-                self.window.after(math.ceil(dt*1000),Step_move,current_step,hit_detected,img_pth,offset)
+                self.window.after(math.ceil(dt*1000),step_move,current_step,hit_detected,offset,cached_images)
             else:
-                self.window.geometry(f'+{int(end_x)}+{int(end_y)}')
+                self.window.geometry(f'+{int(end_x+offset)}+{int(end_y)}')
                 self.label.image = cached_images['idle1']
                 self.label.configure(image=self.label.image)
                 if on_complete:
                     on_complete()
-        Step_move(current_step, hit_detected,img_pth,offset)
+        step_move(current_step, hit_detected, offset, cached_images)
 
-    def JumpAndHit(self,jump_peak,shortcut,speed,on_complete=None):
+    def jump_and_hit(self,jump_peak,shortcut,speed,on_complete=None):
         peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
         folder_view,hwnd_lv = DesktopUtils.get_desktop_interfaces(
             SharkoConstants.CLSID_ShellWindows,
@@ -203,23 +201,23 @@ class CombatSystem(IconManager):
             peak_x = peak_x-84
         else:
             peak_x = peak_x-266
-        P0 = (start_x, start_y)
-        Pmid = (peak_x, peak_y)
-        P2 = (end_x, end_y)
-        B, P1 = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
-        L2 = MathUtils.quadratic_length(P0, P1, P2, n=2000)
+        P0      = (start_x, start_y)
+        Pmid    = (peak_x, peak_y)
+        P2      = (end_x, end_y)
+        B, P1   = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
+        L2      = MathUtils.quadratic_length(P0, P1, P2, n=2000)
         
-        T = 1*(L2/(speed*1800))**0.4
-        Steps = math.floor(T*60)
-        dt = T/Steps
+        T       = 1*(L2/(speed*1800))**0.4
+        Steps   = math.floor(T*60)
+        dt      = T/Steps
         original_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
         ts = np.linspace(0, 1, Steps)
-        points = B(ts)
-        hit_db = False
-        hit_detected = False
-        sprite_width = 165
-        sprite_height = 165
-        current_step = 2
+        points  = B(ts)
+        hit_db          = False
+        hit_detected    = False
+        sprite_width    = 165
+        sprite_height   = 165
+        current_step    = 2
         cached_images = self.jump_images
         offset = 0
         if end_x > start_x:
@@ -232,7 +230,7 @@ class CombatSystem(IconManager):
         
         last_image = None
         
-        def Step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images):
+        def step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images):
             nonlocal last_image
             current_x = math.floor(points[current_step-1][0])
             current_y = math.floor(points[current_step-1][1])
@@ -284,7 +282,7 @@ class CombatSystem(IconManager):
                 if (sprite_x <= mouse_x <= sprite_x + sprite_width and 
                     sprite_y <= mouse_y <= sprite_y + sprite_height):
                     hit_detected = True
-                    CombatSystem.damage(None, self)
+                    CombatSystem.damage(self)
             
             if not hit_db:
                 current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
@@ -306,16 +304,16 @@ class CombatSystem(IconManager):
 
             current_step = current_step + 1
             if current_step< Steps:
-                self.window.after(math.ceil(dt*1000),Step_move,current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
+                self.window.after(math.ceil(dt*1000),step_move,current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
             else:
                 self.window.geometry(f'+{int(end_x+offset)}+{int(end_y)}')
                 self.label.image = cached_images['idle1']
                 self.label.configure(image=self.label.image)
                 if on_complete:
                     on_complete()
-        Step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
+        step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
 
-    def Lazer(self, duration_ms, on_complete=None):
+    def lazer(self, duration_ms, on_complete=None):
 
         start_time = time.time()
         body_width = self.pivot_images['Pivot_Body'].width
@@ -390,7 +388,7 @@ class CombatSystem(IconManager):
                     self.particles_manager.set_laser("Sharko_Lazer", pivot_x, pivot_y, angle, offset=0)
                     damagetimer = damagetimer+1
                     if damagetimer >= 3:
-                        CombatSystem.damage(None,self)
+                        CombatSystem.damage(self)
                         damagetimer = 0
 
                 rotated_face = face.rotate(
