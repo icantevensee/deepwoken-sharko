@@ -45,7 +45,6 @@ class SharkoConstants:
     ASSETS_PATH                 = "assets/"
     CURRENT_IMAGES_PATH         = "assets/sharko/"
     IMAGES_PATH                 = "assets/sharko/"
-    ALT_IMAGES_PATH             = "assets/mirror_sharko"
     BAR_IMG_PATH                = "assets/UI/boss_bar_border.png"
     MARKER_PATH                 = "assets/UI/boss_bar_pins.png"
     CENTER_ICON_PATH            = "assets/UI/boss_bar_skull.png"
@@ -93,8 +92,12 @@ class SharkoConstants:
     # Combat Mechanics
     PARRY_WINDOW            = 0.3  # seconds
     PARRY_BLOCK_COOLDOWN    = 0.75  # seconds
+    ATTACL_WINDOW            = 0.3  # seconds
+    ATTACK_COOLDOWN    = 0.75  # seconds
     
     # UI & Text Rendering
+    SPRITE_WIDTH = 165
+    SPRITE_HEIGHT = 165
     QUESTION_BOX_WIDTH          = 255
     QUESTION_BOX_HEIGHT         = 140
     QUESTION_BOX_TOP_Y          = 9

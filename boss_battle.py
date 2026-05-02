@@ -5,6 +5,8 @@ import      numpy as np
 import      win32api
 import      win32gui
 from        ctypes import windll, wintypes, byref
+import      tkinter as tk
+import      os
 from        PIL import Image, ImageTk
 
 from        icons import IconManager
@@ -78,7 +80,38 @@ class CombatSystem(IconManager):
         except Exception as e:
             pass
 
+    def damage_sharko():
+        d = 5
+
+    def mouse_attack(self,x,y):
+        sprite_x, sprite_y = None,None
+        current_x,current_y = int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
+        if self.current_facing == "Left":
+            sprite_x, sprite_y = current_x , current_y+178
+        else:
+            sprite_x, sprite_y = current_x + 190, current_y+178
+        print(x,y,sprite_x,sprite_y)
+
+        if sprite_x <= x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= y <= sprite_y + self.SPRITE_HEIGHT:
+            print("hitthedarnsharko")
+            CombatSystem.damage_sharko()
+
+
+            
+
     def jump(self,jump_end,speed,on_complete=None):
+        self.jump_images = {
+            'jump1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump1.png')),
+            'jump2': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump2.png')),
+            'jump3': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump3.png')),
+            'jump4': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump4.png'))
+        }
+        self.alt_jump_images = {
+            'jump1': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
+            'jump2': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
+            'jump3': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
+            'jump4': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT))
+        }
         end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
         dist                = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
         screen_height       = windll.user32.GetSystemMetrics(1)
@@ -96,20 +129,18 @@ class CombatSystem(IconManager):
         B, P1   = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
         L2      = MathUtils.quadratic_length(P0, P1, P2, n=2000)
         
-        T       = 0.75*(L2/(speed*1800))**0.4
+        T       = 1*(L2/(speed*1800))**0.4
         Steps   = math.floor(T*30)
         dt      = T/Steps
         ts = np.linspace(0, 1, Steps)
         points  = B(ts)
         hit_detected    = False
-        sprite_width    = 165
-        sprite_height   = 165
         current_step    = 2
         cached_images = self.jump_images
         offset = 0
         if end_x > start_x:
             cached_images = self.alt_jump_images
-            offset = int(359/2)
+            offset = int(self.WINDOW_SIZE.split('x')[0])//2
         
         last_image = None
         
@@ -128,7 +159,7 @@ class CombatSystem(IconManager):
             if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
                 if current_x-previous_x-2 > 0:
                     cached_images = self.alt_jump_images
-                    offset = int(359/2)
+                    offset = int(self.WINDOW_SIZE.split('x')[0])//2
                 elif current_x-previous_x+2 < 0:
                     cached_images = self.jump_images
                     offset = 0
@@ -161,8 +192,7 @@ class CombatSystem(IconManager):
                     sprite_x += 190
                     sprite_y += 178
                 
-                if (sprite_x <= mouse_x <= sprite_x + sprite_width and 
-                    sprite_y <= mouse_y <= sprite_y + sprite_height):
+                if sprite_x <= mouse_x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= mouse_y <= sprite_y + self.SPRITE_HEIGHT:
                     hit_detected = True
                     CombatSystem.damage(self)
             
@@ -171,13 +201,30 @@ class CombatSystem(IconManager):
                 self.window.after(math.ceil(dt*1000),step_move,current_step,hit_detected,offset,cached_images)
             else:
                 self.window.geometry(f'+{int(end_x+offset)}+{int(end_y)}')
-                self.label.image = cached_images['idle1']
-                self.label.configure(image=self.label.image)
+                self.jump_images.clear()
+                self.alt_jump_images.clear()
+                if offset == 0:
+                    self.current_facing = "Right"
+                else:
+                    self.current_facing = "Left"
+
                 if on_complete:
                     on_complete()
         step_move(current_step, hit_detected, offset, cached_images)
 
     def jump_and_hit(self,jump_peak,shortcut,speed,on_complete=None):
+        self.jump_images = {
+            'jump1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump1.png')),
+            'jump2': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump2.png')),
+            'jump3': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump3.png')),
+            'jump4': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump4.png'))
+        }
+        self.alt_jump_images = {
+            'jump1': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
+            'jump2': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
+            'jump3': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
+            'jump4': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT))
+        }
         peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
         folder_view,hwnd_lv = DesktopUtils.get_desktop_interfaces(
             SharkoConstants.CLSID_ShellWindows,
@@ -215,14 +262,12 @@ class CombatSystem(IconManager):
         points  = B(ts)
         hit_db          = False
         hit_detected    = False
-        sprite_width    = 165
-        sprite_height   = 165
         current_step    = 2
         cached_images = self.jump_images
         offset = 0
         if end_x > start_x:
             cached_images = self.alt_jump_images
-            offset = int(359/2)
+            offset = int(self.WINDOW_SIZE.split('x')[0])//2
 
         item = folder_view.Item(shortcut)
         start_pos = folder_view.GetItemPosition(item)
@@ -245,7 +290,7 @@ class CombatSystem(IconManager):
             if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
                 if current_x-previous_x-2 > 0:
                     cached_images = self.alt_jump_images
-                    offset = int(359/2)
+                    offset = int(self.WINDOW_SIZE.split('x')[0])//2
                 elif current_x-previous_x+2 < 0:
                     cached_images = self.jump_images
                     offset = 0
@@ -279,8 +324,7 @@ class CombatSystem(IconManager):
                     sprite_x += 190
                     sprite_y += 178
                 
-                if (sprite_x <= mouse_x <= sprite_x + sprite_width and 
-                    sprite_y <= mouse_y <= sprite_y + sprite_height):
+                if sprite_x <= mouse_x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= mouse_y <= sprite_y + self.SPRITE_HEIGHT:
                     hit_detected = True
                     CombatSystem.damage(self)
             
@@ -307,13 +351,23 @@ class CombatSystem(IconManager):
                 self.window.after(math.ceil(dt*1000),step_move,current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
             else:
                 self.window.geometry(f'+{int(end_x+offset)}+{int(end_y)}')
-                self.label.image = cached_images['idle1']
-                self.label.configure(image=self.label.image)
+                self.jump_images.clear()
+                self.alt_jump_images.clear()
+                if offset == 0:
+                    self.current_facing = "Right"
+                else:
+                    self.current_facing = "Left"
+
                 if on_complete:
                     on_complete()
         step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
 
     def lazer(self, duration_ms, on_complete=None):
+        self.pivot_images = {
+            'Pivot_Body': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Body.png')).convert("RGBA"),
+            'Pivot_Face': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Face.png')).convert("RGBA"),
+            'Pivot_Corals': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Corals.png')).convert("RGBA")
+        }
 
         start_time = time.time()
         body_width = self.pivot_images['Pivot_Body'].width
@@ -329,7 +383,9 @@ class CombatSystem(IconManager):
             self.window.geometry(f'+{int(self.window.geometry().split("+")[-2])+offset_x}+{int(self.window.geometry().split("+")[-1])+offset_y}')
         frame1db = False
         Indicator_Length = 0.5*1000
+        lazer_dir = None
         def update_lazer(frame1db,lastangle=0,damagetimer = 0):
+            nonlocal lazer_dir
             elapsed = (time.time() - start_time) * 1000
             if elapsed < duration_ms:
                 geom_parts = self.window.geometry().split('+')
@@ -341,12 +397,11 @@ class CombatSystem(IconManager):
 
                 mouse_x, mouse_y = win32api.GetCursorPos()
 
-                lazer_dir = "Left" if mouse_x < screen_center_x else "Right"
-
+                lazer_dir = "Right" if mouse_x < screen_center_x else "Left"
 
                 def get_dir_img(name):
                     img = self.pivot_images[name]
-                    return  img.transpose(Image.FLIP_LEFT_RIGHT) if lazer_dir == "Right" else img
+                    return  img.transpose(Image.FLIP_LEFT_RIGHT) if lazer_dir == "Left" else img
 
                 body = get_dir_img('Pivot_Body')
                 face = get_dir_img('Pivot_Face')
@@ -355,7 +410,7 @@ class CombatSystem(IconManager):
                 rel_x = mouse_x - screen_center_x
                 rel_y = mouse_y - screen_center_y
                 
-                dirconst = -1 if lazer_dir == "Left" else 1
+                dirconst = -1 if lazer_dir == "Right" else 1
                 calc_x = dirconst*rel_x
                 angle_rad = math.atan2(rel_y, calc_x)
                 angle_deg = math.degrees(angle_rad)
@@ -418,13 +473,18 @@ class CombatSystem(IconManager):
                 final_img = ImageTk.PhotoImage(combined)
                 self.label.image = final_img
                 self.label.configure(image=final_img)
-                
                 self.window.after(30, lambda: update_lazer(frame1db,lastangle,damagetimer))
             else:
                 self.particles_manager.remove_laser("Sharko_Lazer")
-                self.window.geometry(f'+{int(self.window.geometry().split("+")[-2])-offset_x}+{int(self.window.geometry().split("+")[-1])-offset_y}')
-                idle_img = self.jump_images['idle1']
-                self.label.image = idle_img
-                self.label.configure(image=idle_img)
+                l_r_offset = 0
+                if self.current_facing != lazer_dir:
+                    if self.current_facing == "Right":
+                        l_r_offset=int(self.WINDOW_SIZE.split('x')[0])//2
+                    else:
+                        l_r_offset=-int(self.WINDOW_SIZE.split('x')[0])//2
+                self.current_facing = lazer_dir
+                self.window.geometry(f'+{int(self.window.geometry().split("+")[-2])-offset_x+l_r_offset}+{int(self.window.geometry().split("+")[-1])-offset_y}')
+                self.pivot_images.clear()
+                self.pivot_images
                 if on_complete: on_complete()
         update_lazer(frame1db)

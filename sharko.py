@@ -10,6 +10,7 @@ Core implementation of Sharko, the interactive desktop character with features:
 - Customizable movie mode and UI states
 """
 from        ctypes import windll, wintypes, byref
+from matplotlib import image
 import      win32gui
 import      win32api
 
@@ -107,7 +108,9 @@ class Sharko(SharkoConstants, IconManager):
         #AUDIO SYSTEM
         self.sound_enabled = True
         self.sound_file = self.GREETING_SOUND
+        self.sound_lock = threading.Lock()  # Thread-safe sound playback
         pygame.init()
+        pygame.mixer.init()  # Initialize once at startup
         pygame.mixer.set_num_channels(16)
         self.sound_paths    = {'end': self.END_TALKING_SOUND, 'start': self.START_TALKING_SOUND, 'greeting': self.GREETING_SOUND, 'clash': self.CLASH_SOUND, 'answer': self.ANSWER_SOUND, 'block_attempt': self.BLOCK_ATTEMPT_SOUND, 'parry': self.PARRY_SOUND, 'block': self.BLOCK_SOUND, 'hit': self.HIT_SOUND}
         self.sounds_group   = {name: pygame.mixer.Sound(path) for name, path in self.sound_paths.items()}
@@ -120,6 +123,9 @@ class Sharko(SharkoConstants, IconManager):
         self.last_input_time = time.time()
         
         #PARRY AND BLOCK MECHANICS
+        self.attack_press_time          = 0
+        self.attack_active_until        = 0
+        self.last_attack_time           = 0
         self.parry_press_time           = 0
         self.parry_active_until         = 0
         self.last_parry_block_time      = 0
@@ -165,15 +171,35 @@ class Sharko(SharkoConstants, IconManager):
         mem_mb = self.process.memory_info().rss / (1024 * 1024)
         print(f"RAM: {mem_mb:.2f} MB")
 
+    def _flip_photoimage(self, photoimage):
+        """Convert PhotoImage to PIL Image, flip horizontally, and convert back to PhotoImage.
+        
+        Args:
+            photoimage: tk.PhotoImage to flip
+            
+        Returns:
+            tk.PhotoImage: Horizontally flipped version
+        """
+        try:
+            # Convert PhotoImage to PIL Image
+            pil_image = ImageTk.getimage(photoimage)
+            # Flip horizontally
+            flipped_pil = pil_image.transpose(Image.FLIP_LEFT_RIGHT)
+            # Convert back to PhotoImage
+            return ImageTk.PhotoImage(flipped_pil)
+        except Exception as e:
+            print(f"Error flipping image: {e}")
+            return photoimage
+
     def _load_cutscenes(self):
         """Load and initialize cutscene animation presets with frames and timing."""
-        self.CutscenePresets = {
+        self.cutscene_presets = {
             'InactiveCutscene': [
                 {"image": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'idle1.png')), "duration": 1000, "sound": "None"},
                 {"image": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'sideframe.png')), "duration": 150, "sound": "None"},
                 {"image": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'staringframe.png')), "duration": 1000, "sound": "None"},
-                {"type": "repeat", "image1": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'HelloSmall1.png')), "image2": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'HelloSmall2.png')), "sound": 'start', "interval": 500, "repeat_count": 10, "is_first_frame": True},
-                {"type": "repeat", "image1": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'HelloBig1.png')), "image2": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'HelloBig2.png')), "sound": 'clash', "interval": 500, "repeat_count": 11, "is_first_frame": True},
+                {"type": "talk", "image1": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking_forward1.png')), "image2": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking_forward2.png')), "sound": 'start', "interval": 500, "repeat_count": 11, "text": "hello?"},
+                {"type": "talk", "image1": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking_forward1.png')), "image2": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking_forward2.png')), "sound": 'clash', "interval": 500, "repeat_count": 10, "text": "HELLO!"},
                 {"image": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'staringframe.png')), "duration": 1000, "sound": "None"},
                 {"image": tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'sideframe.png')), "duration": 150, "sound": "None"}
             ],
@@ -214,26 +240,17 @@ class Sharko(SharkoConstants, IconManager):
                         tk.PhotoImage(file=os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png'))],
         }
         
-        # Pre-load jump images for fighting to avoid loading them in each frame
-        self.jump_images = {
-            'jump1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump1.png')),
-            'jump2': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump2.png')),
-            'jump3': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump3.png')),
-            'jump4': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump4.png')),
-            'idle1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'idle1.png'))
-        }
-        self.alt_jump_images = {
-            'jump1': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'jump1.png')),
-            'jump2': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'jump2.png')),
-            'jump3': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'jump3.png')),
-            'jump4': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'jump4.png')),
-            'idle1': tk.PhotoImage(file=os.path.join(self.ALT_IMAGES_PATH, 'idle1.png'))
-        }
-        self.pivot_images = {
-            'Pivot_Body': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Body.png')).convert("RGBA"),
-            'Pivot_Face': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Face.png')).convert("RGBA"),
-            'Pivot_Corals': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Corals.png')).convert("RGBA")
-        }
+
+
+
+    def flip_photoimage(self, photoimage):
+        try:
+            pil_image = ImageTk.getimage(photoimage)
+            flipped_pil = pil_image.transpose(Image.FLIP_LEFT_RIGHT)
+            return ImageTk.PhotoImage(flipped_pil)
+        except Exception as e:
+            print(f"Error flipping image: {e}")
+            return photoimage
 
     def move_window_x(self, window, target_x):
         """Animate character window movement to target X position.
@@ -312,6 +329,25 @@ class Sharko(SharkoConstants, IconManager):
         except (TclError, AttributeError):
             pass
 
+    def _toggle_menu_items(self,whitelist):
+        try:
+            last_index = self.menu.index("end")
+        except tk.TclError:
+            return
+        for i in range(last_index + 1):
+            try:
+                if self.menu.type(i) == "separator":
+                    continue
+                    
+                label = self.menu.entrycget(i, "label")          
+                if label not in whitelist:
+                    current_state = self.menu.entrycget(i, "state")
+                    new_state = "disabled" if current_state == "normal" else "normal"
+                    self.menu.entryconfigure(i, state=new_state)
+            except tk.TclError:
+                continue
+
+
     def animate(self):
         """Update and render current animation frame based on character state."""
         if self.label.image is None:
@@ -321,7 +357,7 @@ class Sharko(SharkoConstants, IconManager):
             if self.current_facing == "Left":
                 self.window.geometry(f'+{0}+{self.window.geometry().split('+')[-1]}')
             else: 
-                self.window.geometry(f'+{self.screen_x-359}+{self.window.geometry().split('+')[-1]}')
+                self.window.geometry(f'+{self.screen_x-int(self.WINDOW_SIZE.split('x')[0])}+{self.window.geometry().split('+')[-1]}')
 
         if self.cutscene_active or self.fight_mode_active:
             return
@@ -339,27 +375,36 @@ class Sharko(SharkoConstants, IconManager):
 
         self.window.after(self.ANIMATION_DELAY, self.animate)
 
-    def play_cutscene(self, cutscenepreset):
+    def play_cutscene(self, cutscene_preset):
         if self.cutscene_active:
             return
         self.cutscene_active = True
         self.new_state('cutscene')
-        Cutscene = self.CutscenePresets[cutscenepreset]
-        self._play_cutscene_frame(Cutscene, 0,cutscenepreset)
+        cutscene = self.cutscene_presets[cutscene_preset]
+        for frame in cutscene:
+            if frame.get("type") == "repeat":
+                frame["is_first_frame"] = True
+            elif frame.get("type") == "talk":
+                frame["is_first_frame"] = True
+                text_img = self._render_text_image(frame["text"], (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT))
+                frame["image1"] = ImageTk.PhotoImage(self.composite_on_base(ImageTk.getimage(frame["image1"]),text_img,None))
+                frame["image2"] = ImageTk.PhotoImage(self.composite_on_base(ImageTk.getimage(frame["image2"]),text_img,None))
+        
+        self._play_cutscene_frame(cutscene, 0,cutscene_preset)
 
-    def _play_cutscene_frame(self, Cutscene, current_frame, cutscenepreset):
-        if cutscenepreset == 'InactiveCutscene':
+    def _play_cutscene_frame(self, cutscene, current_frame, cutscene_preset):
+        if cutscene_preset == 'InactiveCutscene':
             if time.time() - self.last_input_time < self.INACTIVE_TIME_REQUIREMENT:
                 if current_frame < 6:
                     current_frame = 6 
-                elif current_frame == len(Cutscene):
+                elif current_frame == len(cutscene):
                     self.cutscene_active = False
                     self.talking_disabled = False
                     self._load_cutscenes()
                     self.idle_state()
                     self.animate()
                     return
-            elif current_frame == len(Cutscene):
+            elif current_frame == len(cutscene):
                 self.cutscene_active = False
                 self.talking_disabled = True
                 self._load_cutscenes()
@@ -367,18 +412,18 @@ class Sharko(SharkoConstants, IconManager):
                 self.animate()
                 return
 
-        if current_frame == len(Cutscene):
+        if current_frame == len(cutscene):
             self.cutscene_active = False
             self._load_cutscenes()
             self.idle_state()
             self.animate()
             return
         
-        current_frame_data = Cutscene[current_frame]
+        current_frame_data = cutscene[current_frame]
         
         # Handle repeating cutscene frames
         Sound_Cleared = False
-        if current_frame_data.get("type") == "repeat":
+        if current_frame_data.get("type") == "repeat" or current_frame_data.get("type") == "talk":
             image       = current_frame_data["image1"]
             duration    = current_frame_data["interval"]
             sound       = current_frame_data["sound"]
@@ -414,7 +459,7 @@ class Sharko(SharkoConstants, IconManager):
         
         self.label.configure(image=image)
         self.label.image = image
-        self.window.after(duration, self._play_cutscene_frame, Cutscene, current_frame, cutscenepreset)
+        self.window.after(duration, self._play_cutscene_frame, cutscene, current_frame, cutscene_preset)
 
     def clear_talking(self,state):
         self.states[state] = []
@@ -519,6 +564,7 @@ class Sharko(SharkoConstants, IconManager):
         try:
             if self.current_facing == 'Right':
                 self.rotate_right()
+                if self.state == 'fight': return
                 try:
                     y = self.window.geometry().split('+')[-1]
                 except (IndexError, ValueError):
@@ -527,6 +573,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.x = 0
             else:
                 self.rotate_left()
+                if self.state == 'fight': return
                 right_x = max(0, self.screen_x - int(self.WINDOW_SIZE.split('x')[0]))
                 try:
                     y = self.window.geometry().split('+')[-1]
@@ -602,6 +649,14 @@ class Sharko(SharkoConstants, IconManager):
     def _on_action(self,x, y, button):
         if button == mouse.Button.right and self.supress_right_clk:
             mouse.Listener.suppress_event(self)
+        if self.fight_mode_active and button == mouse.Button.left:
+                current_time = time.time()
+                print('gggg',self.attack_press_time,current_time - self.last_attack_time >= self.ATTACK_COOLDOWN)
+                if current_time - self.last_attack_time >= self.ATTACK_COOLDOWN:
+                    self.last_attack_time = current_time
+                    self.attack_press_time = time.time()
+                    self.attack_active_until = self.attack_press_time + self.PARRY_WINDOW
+                    CombatSystem.mouse_attack(self,x,y)
         self.last_input_time = time.time()
         self.talking_disabled = False
 
@@ -684,69 +739,6 @@ class Sharko(SharkoConstants, IconManager):
         if not hasattr(self, 'Lines') or not self.Lines:
             return
         box_w, box_h = self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT
-        def _render_text_image(text, size):
-            img = Image.new('RGBA', (size[0], size[1]), (0, 0, 0, 0))
-            draw = ImageDraw.Draw(img)
-
-            base_font_path  = self.FONT
-            padding         = self.TEXT_RENDER_PADDING
-            line_spacing    = self.TEXT_LINE_SPACING
-
-            for font_size in range(self.FONT_SIZE_MAX, self.FONT_SIZE_MIN, -1):
-                font = ImageFont.truetype(base_font_path, font_size)
-
-                words = text.split()
-                lines = []
-                cur = ''
-                for w in words:
-                    test = (cur + ' ' + w).strip()
-                    bbox = draw.multiline_textbbox((0, 0), test, font=font)
-                    tw = bbox[2] - bbox[0]
-                    if tw <= size[0] - padding * 2:
-                        cur = test
-                    else:
-                        if cur:
-                            lines.append(cur)
-                        cur = w
-                if cur:
-                    lines.append(cur)
-
-                allowable_w = size[0] - padding * 2
-                too_wide = False
-                for l in lines:
-                    try:
-                        bbox = draw.multiline_textbbox((0, 0), l, font=font)
-                        if bbox[2] - bbox[0] > allowable_w:
-                            too_wide = True
-                            break
-                    except Exception:
-                        too_wide = True
-                        break
-                if too_wide:
-                    continue
-
-                try:
-                    ascent, descent = font.getmetrics()
-                    single_line_h = ascent + descent
-                except Exception:
-                    try:
-                        bbox = draw.textbbox((0, 0), 'Mg', font=font)
-                        single_line_h = bbox[3] - bbox[1]
-                    except Exception:
-                        single_line_h = 12
-                total_h = single_line_h * len(lines) + (len(lines)-1) * line_spacing
-                if total_h <= size[1] - padding * 2:
-                    y = 0
-                    for i, l in enumerate(lines):
-                        bbox = draw.multiline_textbbox((0, 0), l, font=font)
-                        tw = bbox[2] - bbox[0]
-                        x = 0
-                        draw.text((x, y), l, font=font, fill=(0, 0, 0, 255))
-                        y += single_line_h + line_spacing
-                    return img
-
-            draw.text((0, 0), text, font=ImageFont.load_default(), fill=(0,0,0,255))
-            return img
 
         if IsQuestion == 3:
             try:
@@ -758,15 +750,19 @@ class Sharko(SharkoConstants, IconManager):
             except Exception:
                 return
 
-            q_img       = _render_text_image(question_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_TEXT_HEIGHT))
-            opt1_img    = _render_text_image(option1_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
-            opt2_img    = _render_text_image(option2_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
+            q_img       = self._render_text_image(question_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_TEXT_HEIGHT))
+            opt1_img    = self._render_text_image(option1_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
+            opt2_img    = self._render_text_image(option2_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
 
             try:
                 base1_path  = os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')
                 base2_path  = os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png')
                 base1 = Image.open(base1_path).convert('RGBA')
                 base2 = Image.open(base2_path).convert('RGBA')
+                if self.current_facing == "Left":
+                    base1 = base1.transpose(Image.FLIP_LEFT_RIGHT)
+                    base2 = base2.transpose(Image.FLIP_LEFT_RIGHT)
+
             except Exception:
                 try:
                     combined = Image.new('RGBA', (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT), (0, 0, 0, 0))
@@ -814,12 +810,15 @@ class Sharko(SharkoConstants, IconManager):
                 pass
             return
 
-        text_img = _render_text_image(sentence, (box_w, box_h))
+        text_img = self._render_text_image(sentence, (box_w, box_h))
         try:
             base1_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking1.png')
             base2_path = os.path.join(self.CURRENT_IMAGES_PATH, 'talking2.png')
             base1 = Image.open(base1_path).convert('RGBA')
             base2 = Image.open(base2_path).convert('RGBA')
+            if self.current_facing == "Left":
+                base1 = base1.transpose(Image.FLIP_LEFT_RIGHT)
+                base2 = base2.transpose(Image.FLIP_LEFT_RIGHT)
         except Exception:
             try:
                 tk_img = ImageTk.PhotoImage(text_img)
@@ -828,22 +827,8 @@ class Sharko(SharkoConstants, IconManager):
             self.states[state] = [tk_img, tk_img]
             return
 
-        def composite_on_base(base_img):
-            b = base_img.copy()
-            if self.current_facing == "Left":
-                x = 97
-            else:
-                x = 9
-            y = self.QUESTION_BOX_TOP_Y
-            if IsQuestion == 1:
-                y = self.QUESTION_BOX_OPTION1_Y
-            elif IsQuestion == 2:
-                y = self.QUESTION_BOX_OPTION2_Y
-            b.paste(text_img, (x, y), text_img)
-            return b
-
-        comp1 = composite_on_base(base1)
-        comp2 = composite_on_base(base2)
+        comp1 = self.composite_on_base(base1,text_img,IsQuestion)
+        comp2 = self.composite_on_base(base2,text_img,IsQuestion)
 
         try:
             tk_img1 = ImageTk.PhotoImage(comp1)
@@ -852,6 +837,84 @@ class Sharko(SharkoConstants, IconManager):
             return
 
         self.states[state] = [tk_img1, tk_img2]
+
+    def composite_on_base(self,base_img,text_img,IsQuestion):
+        b = base_img.copy()
+        if self.current_facing == "Left":
+            x = 97
+        else:
+            x = 9
+        y = self.QUESTION_BOX_TOP_Y
+        if IsQuestion == 1:
+            y = self.QUESTION_BOX_OPTION1_Y
+        elif IsQuestion == 2:
+            y = self.QUESTION_BOX_OPTION2_Y
+        b.paste(text_img, (x, y), text_img)
+        return b
+    
+    def _render_text_image(self,text, size):
+        img = Image.new('RGBA', (size[0], size[1]), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        base_font_path  = self.FONT
+        padding         = self.TEXT_RENDER_PADDING
+        line_spacing    = self.TEXT_LINE_SPACING
+
+        for font_size in range(self.FONT_SIZE_MAX, self.FONT_SIZE_MIN, -1):
+            font = ImageFont.truetype(base_font_path, font_size)
+
+            words = text.split()
+            lines = []
+            cur = ''
+            for w in words:
+                test = (cur + ' ' + w).strip()
+                bbox = draw.multiline_textbbox((0, 0), test, font=font)
+                tw = bbox[2] - bbox[0]
+                if tw <= size[0] - padding * 2:
+                    cur = test
+                else:
+                    if cur:
+                        lines.append(cur)
+                    cur = w
+            if cur:
+                lines.append(cur)
+
+            allowable_w = size[0] - padding * 2
+            too_wide = False
+            for l in lines:
+                try:
+                    bbox = draw.multiline_textbbox((0, 0), l, font=font)
+                    if bbox[2] - bbox[0] > allowable_w:
+                        too_wide = True
+                        break
+                except Exception:
+                    too_wide = True
+                    break
+            if too_wide:
+                continue
+
+            try:
+                ascent, descent = font.getmetrics()
+                single_line_h = ascent + descent
+            except Exception:
+                try:
+                    bbox = draw.textbbox((0, 0), 'Mg', font=font)
+                    single_line_h = bbox[3] - bbox[1]
+                except Exception:
+                    single_line_h = 12
+            total_h = single_line_h * len(lines) + (len(lines)-1) * line_spacing
+            if total_h <= size[1] - padding * 2:
+                y = 0
+                for i, l in enumerate(lines):
+                    bbox = draw.multiline_textbbox((0, 0), l, font=font)
+                    tw = bbox[2] - bbox[0]
+                    x = 0
+                    draw.text((x, y), l, font=font, fill=(0, 0, 0, 255))
+                    y += single_line_h + line_spacing
+                return img
+
+        draw.text((0, 0), text, font=ImageFont.load_default(), fill=(0,0,0,255))
+        return img
 
     def add_removal_sentences(self):
         self.add_talking_sentences(random.choice(self.removal_lines).strip(),'removal',False)
@@ -945,33 +1008,45 @@ class Sharko(SharkoConstants, IconManager):
         sys.exit(self.app.exec_())
 
     def rotate_right(self):
-        new_image_path      = "assets/mirror_sharko/"
-        new_talking_path    = "assets/mirror_sentences/talking/"
-        new_greeting_path   = "assets/mirror_sentences/greeting/"
-        new_removal_path    = "assets/mirror_sentences/removal/"
-        self._load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
-        self.current_facing = "Left"
-        self.x = 0
-        self.position_flip_trigger = True
-        try:
-            self.new_state('Limbo')
-        except Exception:
-            pass
+        for state in self.states.values():
+            for key, state_image in enumerate(state):
+                state[key] = self._flip_photoimage(state_image)
+
+        for preset in self.cutscene_presets.values():
+            for frame in preset:
+                for frame_image in frame.items():
+                    if isinstance(frame_image[1],tk.PhotoImage):
+                        frame[frame_image[0]] = self._flip_photoimage(frame_image[1])
+
+        if self.current_state != "fight":
+            self.current_facing = "Left"
+            self.x = 0
+            self.position_flip_trigger = True
+            try:
+                self.new_state('Limbo')
+            except Exception:
+                pass
         
 
     def rotate_left(self):
-        new_image_path      = "assets/sharko/"
-        new_talking_path    = "assets/sentences/talking/"
-        new_greeting_path   = "assets/sentences/greeting/"
-        new_removal_path    = "assets/sentences/removal/"
-        self._load_images(new_image_path,new_talking_path,new_greeting_path,new_removal_path)
-        self.current_facing = "Right"
-        self.x = self.screen_x-359
-        self.position_flip_trigger = True
-        try:
-            self.new_state('Limbo')
-        except Exception:
-            pass
+        for state in self.states.values():
+            for key, state_image in enumerate(state):
+                state[key] = self._flip_photoimage(state_image)
+
+        for preset in self.cutscene_presets.values():
+            for frame in preset:
+                for frame_image in frame.items():
+                    if isinstance(frame_image[1],tk.PhotoImage):
+                        frame[frame_image[0]] = self._flip_photoimage(frame_image[1])
+
+        if self.current_state != "fight":
+            self.current_facing = "Right"
+            self.x = self.screen_x-int(self.WINDOW_SIZE.split('x')[0])
+            self.position_flip_trigger = True
+            try:
+                self.new_state('Limbo')
+            except Exception:
+                pass
 
 
     def toggle_fight_mode(self):
@@ -988,7 +1063,9 @@ class Sharko(SharkoConstants, IconManager):
                 self.warning_manager = MultiWarningOverlay()
             self.new_state('fight')
             self.fight_loop()
+            self._toggle_menu_items(['Sounds (Off/On)', 'Fight'])
         else:
+            self._toggle_menu_items(['Sounds (Off/On)', 'Fight'])
             self.fight_mode_active = False
             self.supress_right_clk = False
             self.particles_manager.deinitialize()
@@ -1038,21 +1115,43 @@ class Sharko(SharkoConstants, IconManager):
             win32gui.SendMessage(hwnd_lv, self.LVM_SETITEMPOSITION, replacement_shortcut, pos)
         item = folder_view.Item(closest[0])
         item_pos = folder_view.GetItemPosition(item)
-        
-        def schedule_next_attack():
-            """Schedule the next attack 2 seconds after this one finishes"""
-            self._fight_loop_after_id = self.window.after(2000, self.fight_loop)
+        old_facing = self.current_facing
+        def inter_attack_idle():
+            if self.current_facing != old_facing:
+                self.flip_side()
+            self.label.configure(image=self.states['idle'][0])
+            self.label.image = self.states['idle'][0]
+            time = 25000
+            num_idle_frames = time//self.ANIMATION_DELAY
+            current_idle_frame = 0
+            def play_idle_frame(current_idle_frame):
+                if current_idle_frame == num_idle_frames:
+                    self._fight_loop_after_id = self.window.after(self.ANIMATION_DELAY, self.fight_loop)
+                    return
+                current_idle_frame = current_idle_frame+1
+                if current_idle_frame % 2 == 0:
+                    self.label.configure(image=self.states['idle'][0])
+                    self.label.image = self.states['idle'][0]
+                else:
+                    self.label.configure(image=self.states['idle'][1])
+                    self.label.image = self.states['idle'][1]
+
+                self._fight_loop_after_id = self.window.after(self.ANIMATION_DELAY, play_idle_frame,current_idle_frame)
+            play_idle_frame(current_idle_frame)
         self.log_stats()
-        #CombatSystem.jump(self,[random.randint(350, screen_w - 350), work_area_height - 343], 0.4,on_complete=schedule_next_attack)
-        CombatSystem.jump_and_hit(self,item_pos,closest[0],0.4,on_complete=schedule_next_attack)
-        #CombatSystem.lazer(self,10000,on_complete=schedule_next_attack)
+        #CombatSystem.jump(self,[random.randint(350, screen_w - 350), work_area_height - 343], 0.4,on_complete=inter_attack_idle)
+        CombatSystem.jump_and_hit(self,item_pos,closest[0],0.4,on_complete=inter_attack_idle)
+        #CombatSystem.lazer(self,1000,on_complete=inter_attack_idle)
         
 
 
     def sounds(self, sound_object):
-        pygame.mixer.init()
         if self.sound_enabled:
-            sound_object.play()        
+            with self.sound_lock:
+                try:
+                    sound_object.play()
+                except Exception as e:
+                    print(f"Error playing sound: {e}")        
 
     
     def sounds_logics(self):
