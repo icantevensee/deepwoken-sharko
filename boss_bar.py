@@ -5,13 +5,14 @@ Provides a scalable, animated boss health bar overlay for the Sharko game.
 Features include smooth health fill animations, slide-in/out transitions,
 and customizable visual elements like markers, icons, and text.
 """
-import sys
 import math
 import random
-from PyQt5.QtWidgets import QApplication, QWidget
-from PyQt5.QtGui import QPainter, QPixmap, QLinearGradient, QColor, QFont, QFontDatabase, QPainterPath, QPen
+from PyQt5.QtWidgets import QWidget
+from PyQt5.QtGui import QPainter, QPixmap, QColor, QFont, QFontDatabase, QPainterPath, QPen
 from PyQt5.QtCore import Qt, QRect, QTimer, QPropertyAnimation, QEasingCurve, pyqtProperty, QPoint
 from ctypes import windll
+
+from constants import SharkoConstants
 # --- PATHS ---
 PARRY_IMAGES = [
     'assets/particlesUI/sparkle2.png', 
@@ -40,6 +41,9 @@ class ScalableHealthBar(QWidget):
             Qt.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
+
+        # Health
+        self.health = SharkoConstants.MAX_HEALTH
         
         # Default Size
         self.setMinimumSize(400, 160)
@@ -74,7 +78,6 @@ class ScalableHealthBar(QWidget):
         self.move(self.initial_x, -self.height())
 
     # --- ANIMATION PROPERTY ---
-    # We use 'anim_pos' to avoid clashing with the built-in 'pos()' method
     @pyqtProperty(QPoint)
     def anim_pos(self): 
         return self.pos()
@@ -141,7 +144,7 @@ class ScalableHealthBar(QWidget):
             painter.fillRect(bg_rect, QColor(63, 62, 72))
 
             # Foreground Fill Rect
-            self.current_percentage += (self.percentage - self.current_percentage) * 0.05
+            self.current_percentage += (self.percentage - self.current_percentage) * 0.3
             fill_w = int((w - cap_w) * self.current_percentage)
             fill_rect = QRect(cap_w//2, math.floor(h*0.25//2) + y_offset, fill_w, h - math.floor(h*0.25))
             painter.fillRect(fill_rect, QColor(118, 139, 153))

@@ -5,22 +5,25 @@ import      numpy as np
 import      win32api
 import      win32gui
 from        ctypes import windll, wintypes, byref
-import      tkinter as tk
 import      os
-from        PIL import Image, ImageTk
+from        PIL import Image
+from        PyQt5.QtGui import QPixmap, QImage, QCursor
+from        PyQt5.QtCore import Qt, QTimer, QPoint
 
 from        icons import IconManager
 from        math_utils import MathUtils
+from        img_utils import ImgUtils
 
 
 from        shortcut_utils import DesktopUtils
-from        constants import SharkoConstants
 
 
 class CombatSystem(IconManager):
     
     @staticmethod
     def damage(self): #@staticmethod is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
+        if not hasattr(self, 'particles_manager'):
+            return
         current_time = time.time()
         mouse_x, mouse_y = win32api.GetCursorPos()
         
@@ -52,8 +55,8 @@ class CombatSystem(IconManager):
             self.block_active_until = 0
             if self.block_transition_callback:
                 try:
-                    self.window.after_cancel(self.block_transition_callback)
-                except Exception:
+                    self.block_transition_callback.stop()
+                except (RuntimeError, Exception):
                     pass
                 self.block_transition_callback = None
             return
@@ -66,8 +69,8 @@ class CombatSystem(IconManager):
             self.f_key_held = False
             if self.block_transition_callback:
                 try:
-                    self.window.after_cancel(self.block_transition_callback)
-                except Exception:
+                    self.block_transition_callback.stop()
+                except (RuntimeError, Exception):
                     pass
                 self.block_transition_callback = None
         
@@ -80,12 +83,21 @@ class CombatSystem(IconManager):
         except Exception as e:
             pass
 
-    def damage_sharko():
-        d = 5
+    def damage_sharko(self):
+        self.active_bar.health -= self.M1_DAMAGE
+        self.active_bar.percentage = self.active_bar.health/self.MAX_HEALTH
+        mouse_x, mouse_y = win32api.GetCursorPos()
+        self.particles_manager.play_sharko_blood(mouse_x, mouse_y)
+        try:
+            # Try to play a hit/damage sound if it exists
+            self.sounds(self.sounds_group['hit'])
+        except Exception as e:
+            pass
+            
 
     def mouse_attack(self,x,y):
         sprite_x, sprite_y = None,None
-        current_x,current_y = int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
+        current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
         if self.current_facing == "Left":
             sprite_x, sprite_y = current_x , current_y+178
         else:
@@ -93,26 +105,25 @@ class CombatSystem(IconManager):
         print(x,y,sprite_x,sprite_y)
 
         if sprite_x <= x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= y <= sprite_y + self.SPRITE_HEIGHT:
-            print("hitthedarnsharko")
-            CombatSystem.damage_sharko()
+            CombatSystem.damage_sharko(self)
 
 
             
 
     def jump(self,jump_end,speed,on_complete=None):
         self.jump_images = {
-            'jump1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump1.png')),
-            'jump2': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump2.png')),
-            'jump3': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump3.png')),
-            'jump4': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump4.png'))
+            'jump1': QPixmap(os.path.join(self.IMAGES_PATH, 'jump1.png')),
+            'jump2': QPixmap(os.path.join(self.IMAGES_PATH, 'jump2.png')),
+            'jump3': QPixmap(os.path.join(self.IMAGES_PATH, 'jump3.png')),
+            'jump4': QPixmap(os.path.join(self.IMAGES_PATH, 'jump4.png'))
         }
         self.alt_jump_images = {
-            'jump1': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
-            'jump2': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
-            'jump3': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
-            'jump4': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT))
+            'jump1': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png')).convert('RGBA'))),
+            'jump2': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png')).convert('RGBA'))),
+            'jump3': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png')).convert('RGBA'))),
+            'jump4': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png')).convert('RGBA')))
         }
-        end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
+        end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], self.window.geometry().x(), self.window.geometry().y()
         dist                = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
         screen_height       = windll.user32.GetSystemMetrics(1)
         screen_width        = windll.user32.GetSystemMetrics(0)
@@ -144,8 +155,8 @@ class CombatSystem(IconManager):
         
         last_image = None
         
-        def step_move(current_step, hit_detected, offset, cached_images):
-            nonlocal last_image
+        def step_move():
+            nonlocal last_image,current_step, hit_detected, offset, cached_images
             current_x = math.floor(points[current_step-1][0])
             current_y = math.floor(points[current_step-1][1])
             previous_x = 0
@@ -175,11 +186,10 @@ class CombatSystem(IconManager):
                 new_image = cached_images['jump2']
             
             if new_image != last_image:
-                self.label.image = new_image
-                self.label.configure(image=new_image)
+                self.label.setPixmap(new_image)
                 last_image = new_image
             
-            self.window.geometry(f'+{current_x+offset}+{current_y}')
+            self.window.move(current_x+offset, current_y)
             
             if not hit_detected:
                 mouse_x, mouse_y = win32api.GetCursorPos()
@@ -198,9 +208,9 @@ class CombatSystem(IconManager):
             
             current_step = current_step + 1
             if current_step < Steps:
-                self.window.after(math.ceil(dt*1000),step_move,current_step,hit_detected,offset,cached_images)
+                QTimer.singleShot(int(dt*1000),step_move)
             else:
-                self.window.geometry(f'+{int(end_x+offset)}+{int(end_y)}')
+                self.window.move(int(end_x+offset), int(end_y))
                 self.jump_images.clear()
                 self.alt_jump_images.clear()
                 if offset == 0:
@@ -210,33 +220,33 @@ class CombatSystem(IconManager):
 
                 if on_complete:
                     on_complete()
-        step_move(current_step, hit_detected, offset, cached_images)
+        step_move()
 
     def jump_and_hit(self,jump_peak,shortcut,speed,on_complete=None):
         self.jump_images = {
-            'jump1': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump1.png')),
-            'jump2': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump2.png')),
-            'jump3': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump3.png')),
-            'jump4': tk.PhotoImage(file=os.path.join(self.IMAGES_PATH, 'jump4.png'))
+            'jump1': QPixmap(os.path.join(self.IMAGES_PATH, 'jump1.png')),
+            'jump2': QPixmap(os.path.join(self.IMAGES_PATH, 'jump2.png')),
+            'jump3': QPixmap(os.path.join(self.IMAGES_PATH, 'jump3.png')),
+            'jump4': QPixmap(os.path.join(self.IMAGES_PATH, 'jump4.png'))
         }
         self.alt_jump_images = {
-            'jump1': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
-            'jump2': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
-            'jump3': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT)),
-            'jump4': ImageTk.PhotoImage((Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png')).convert('RGBA')).transpose(Image.FLIP_LEFT_RIGHT))
+            'jump1': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png')).convert('RGBA'))),
+            'jump2': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png')).convert('RGBA'))),
+            'jump3': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png')).convert('RGBA'))),
+            'jump4': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png')).convert('RGBA')))
         }
-        peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, int(self.window.geometry().split('+')[-2]), int(self.window.geometry().split('+')[-1])
+        peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, self.window.geometry().x(), self.window.geometry().y()
         folder_view,hwnd_lv = DesktopUtils.get_desktop_interfaces(
-            SharkoConstants.CLSID_ShellWindows,
-            SharkoConstants.IID_IFolderView,
-            SharkoConstants.SWC_DESKTOP,
-            SharkoConstants.SWFO_NEEDDISPATCH
+            self.CLSID_ShellWindows,
+            self.IID_IFolderView,
+            self.SWC_DESKTOP,
+            self.SWFO_NEEDDISPATCH
         )
         item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
         screen_height = windll.user32.GetSystemMetrics(1)
         screen_width = windll.user32.GetSystemMetrics(0)
         desktop_working_area = wintypes.RECT()
-        windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
+        windll.user32.SystemParametersInfoW(self.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
         thickness_vertical = screen_height - work_area_height    
         if thickness_vertical > 0:
@@ -257,7 +267,8 @@ class CombatSystem(IconManager):
         T       = 1*(L2/(speed*1800))**0.4
         Steps   = math.floor(T*60)
         dt      = T/Steps
-        original_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
+        print(dt, "dttt")
+        original_count = win32gui.SendMessage(hwnd_lv, self.LVM_GETITEMCOUNT, 0, 0)
         ts = np.linspace(0, 1, Steps)
         points  = B(ts)
         hit_db          = False
@@ -275,8 +286,8 @@ class CombatSystem(IconManager):
         
         last_image = None
         
-        def step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images):
-            nonlocal last_image
+        def step_move():
+            nonlocal last_image,current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images
             current_x = math.floor(points[current_step-1][0])
             current_y = math.floor(points[current_step-1][1])
             previous_x = 0
@@ -306,11 +317,10 @@ class CombatSystem(IconManager):
                 new_image = cached_images['jump2']
             
             if new_image != last_image:
-                self.label.image = new_image
-                self.label.configure(image=new_image)
+                self.label.setPixmap(new_image)
                 last_image = new_image
             
-            self.window.geometry(f'+{current_x+offset}+{current_y}')
+            self.window.move(current_x+offset, current_y)
             
             if not hit_detected:
                 mouse_x, mouse_y = win32api.GetCursorPos()
@@ -329,7 +339,7 @@ class CombatSystem(IconManager):
                     CombatSystem.damage(self)
             
             if not hit_db:
-                current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
+                current_count = win32gui.SendMessage(hwnd_lv, self.LVM_GETITEMCOUNT, 0, 0)
                 if not DesktopUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
                     original_count = current_count
                     shortcut = DesktopUtils.get_actual_index(hwnd_lv, item_name)
@@ -338,7 +348,7 @@ class CombatSystem(IconManager):
                         shortcut = DesktopUtils.create_shortcut(hwnd_lv)
                         item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
 
-                win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, shortcut, pos)
+                win32gui.SendMessage(hwnd_lv, self.LVM_SETITEMPOSITION, shortcut, pos)
             
 
             if current_step >= Steps/2 and not hit_db:
@@ -348,9 +358,9 @@ class CombatSystem(IconManager):
 
             current_step = current_step + 1
             if current_step< Steps:
-                self.window.after(math.ceil(dt*1000),step_move,current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
+                QTimer.singleShot(int(dt*1000),step_move)
             else:
-                self.window.geometry(f'+{int(end_x+offset)}+{int(end_y)}')
+                self.window.move(int(end_x+offset), int(end_y))
                 self.jump_images.clear()
                 self.alt_jump_images.clear()
                 if offset == 0:
@@ -360,7 +370,7 @@ class CombatSystem(IconManager):
 
                 if on_complete:
                     on_complete()
-        step_move(current_step,hit_db,hit_detected,shortcut,original_count,item_name,offset,cached_images)
+        step_move()
 
     def lazer(self, duration_ms, on_complete=None):
         self.pivot_images = {
@@ -377,19 +387,22 @@ class CombatSystem(IconManager):
         if self.current_facing == "Right":
             offset_x = 357-body_width
             offset_y = 342-body_height
-            self.window.geometry(f'+{int(self.window.geometry().split("+")[-2])+offset_x}+{int(self.window.geometry().split("+")[-1])+offset_y}')
+            current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
+            self.window.move(current_x + offset_x, current_y + offset_y)
         else:
             offset_y = 342-body_height
-            self.window.geometry(f'+{int(self.window.geometry().split("+")[-2])+offset_x}+{int(self.window.geometry().split("+")[-1])+offset_y}')
+            current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
+            self.window.move(current_x + offset_x, current_y + offset_y)
         frame1db = False
         Indicator_Length = 0.5*1000
         lazer_dir = None
+        self.lazer_timer = None
+        
         def update_lazer(frame1db,lastangle=0,damagetimer = 0):
             nonlocal lazer_dir
             elapsed = (time.time() - start_time) * 1000
             if elapsed < duration_ms:
-                geom_parts = self.window.geometry().split('+')
-                window_x, window_y = int(geom_parts[-2]), int(geom_parts[-1])
+                window_x, window_y = self.window.geometry().x(), self.window.geometry().y()
                 
                 screen_center_x = window_x + center_p[0]
                 screen_center_y = window_y + center_p[1]
@@ -470,10 +483,15 @@ class CombatSystem(IconManager):
                         fillcolor=(0,0,0,0)
                     )
                 
-                final_img = ImageTk.PhotoImage(combined)
-                self.label.image = final_img
-                self.label.configure(image=final_img)
-                self.window.after(30, lambda: update_lazer(frame1db,lastangle,damagetimer))
+                # Convert PIL image to QPixmap
+                final_pixmap = ImgUtils._pil_to_qpixmap(combined)
+                self.label.setPixmap(final_pixmap)
+                
+                # Schedule next update
+                self.lazer_timer = QTimer()
+                self.lazer_timer.timeout.connect(lambda: update_lazer(frame1db, lastangle, damagetimer))
+                self.lazer_timer.setSingleShot(True)
+                self.lazer_timer.start(30)
             else:
                 self.particles_manager.remove_laser("Sharko_Lazer")
                 l_r_offset = 0
@@ -483,8 +501,10 @@ class CombatSystem(IconManager):
                     else:
                         l_r_offset=-int(self.WINDOW_SIZE.split('x')[0])//2
                 self.current_facing = lazer_dir
-                self.window.geometry(f'+{int(self.window.geometry().split("+")[-2])-offset_x+l_r_offset}+{int(self.window.geometry().split("+")[-1])-offset_y}')
+                current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
+                self.window.move(current_x - offset_x + l_r_offset, current_y - offset_y)
                 self.pivot_images.clear()
                 self.pivot_images
                 if on_complete: on_complete()
         update_lazer(frame1db)
+    

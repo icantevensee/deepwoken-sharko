@@ -36,7 +36,7 @@ class SharkoConstants:
     IDLE_ANIMATION_DELAY        = 20000
     GREETING_ANIMATION_DELAY    = 8000
     REMOVAL_ANIMATION_DELAY     = 3800
-    INACTIVE_TIME_REQUIREMENT   = 60
+    INACTIVE_TIME_REQUIREMENT   = 1000000000000
     
     # Window
     WINDOW_SIZE                 = "357x342"
@@ -65,6 +65,10 @@ class SharkoConstants:
     PARRY_SOUND                 = "assets/sounds/fight-sfx/Parry.mp3"
     BLOCK_SOUND                 = "assets/sounds/fight-sfx/Block.mp3"
     HIT_SOUND                   = "assets/sounds/fight-sfx/Hit.mp3"
+
+    # Fight constants
+    MAX_HEALTH                  = 2000
+    M1_DAMAGE                   = 30
 
     # Fonts
     FONT = r"assets/fonts/TheFont.ttf"

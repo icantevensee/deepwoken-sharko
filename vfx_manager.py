@@ -91,7 +91,7 @@ class Particle:
             self.size       = random.uniform(6, 12)
             self.rotation   = random.uniform(0, 360)
             self.rot_speed  = random.uniform(-15, 15)
-        elif p_type == 'blood':
+        elif p_type == 'blood' or p_type == 'blood_sharko':
             angle           = random.uniform(0, 2 * math.pi) 
             speed           = random.uniform(4, 12)
             self.vel        = QPointF(math.cos(angle) * speed, math.sin(angle) * speed)
@@ -114,7 +114,18 @@ class Particle:
             self.rot_speed  = random.uniform(-15, 15)
             self.vel        = QPointF(0,0)
             self.friction   = 0.96
-
+        elif p_type == 'unparryable_glyph' or p_type == 'unblockable_glyph':
+            self.scale      = 0.0
+            self.rotation   = 0
+            self.rot_speed  = 0.0
+            self.vel        = QPointF(0,0)
+            self.friction   = 0.96
+        elif p_type == 'unparryable_outline' or p_type == 'unblockable_outline':
+            self.scale      = 0.0
+            self.rotation   = random.uniform(0, 360)
+            self.rot_speed  = 5
+            self.vel        = QPointF(0,0)
+            self.friction   = 0.96
     def update(self, dt):
         """Update particle physics, position, and animation properties.
         
@@ -135,7 +146,7 @@ class Particle:
             self.rotation += self.rot_speed
             self.scale += 0.005
             self.alpha -= 0.08
-        elif self.p_type == 'blood':
+        elif self.p_type == 'blood' or self.p_type == 'blood_sharko':
             self.rotation += self.rot_speed
             self.alpha -= 0.03 
         elif self.p_type == 'laser_square':
@@ -148,26 +159,48 @@ class Particle:
             else:
                 self.alpha -= 0.03
                 self.scale -= 0.002
+        elif self.p_type == 'unparryable_glyph' or self.p_type == 'unblockable_glyph':
+            self.rotation += self.rot_speed
+            if self.elapsed < 0.07:
+                self.scale += 0.075
+            else:
+                self.alpha -= 0.04
+                self.scale += 0.002
+        elif self.p_type == 'unparryable_outline' or self.p_type == 'unblockable_outline':
+            self.rotation += self.rot_speed
+            if self.elapsed < 0.07:
+                self.scale += 0.075
+            elif self.elapsed > 0.4:
+                self.scale -= 0.025
+            if self.scale <= 0:
+                self.alpha = 0
         else:
             self.alpha -= 0.05
             
         return self.alpha > 0
 
 class VFXManager(QWidget):
+    # Cache QColor objects to avoid creating them every frame
+    _COLOR_BLOOD = QColor(150, 0, 0)
+    _COLOR_BLOOD_SHARKO = QColor(18, 117, 64)
+    _COLOR_BLOCK = QColor(255, 255, 0)
+    _COLOR_LASER = QColor(0, 180, 255)
+    
     def __init__(self):
         super().__init__()
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.particles = []
-        self.lasers = {} 
+        self.lasers = {}
         self.textures = {}
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self._load_assets()
         self.showFullScreen()
+        self.raise_()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_vfx)
         self.timer.start(16)
-
+        self._dead_particles = []  # Cache for dead particles to reuse
     def _load_assets(self):
         asset_map = {
             "sparkle1": "assets/particles/sparkle1.png", 
@@ -176,7 +209,11 @@ class VFXManager(QWidget):
             "spark": "assets/particles/spark.png",
             "ring": "assets/particles/ring.png", 
             "ringportion": "assets/particles/ringportion.png",
-            "star1": "assets/particles/star1.png"
+            "star1": "assets/particles/star1.png",
+            "unparryable_glyph": "assets/particles/unparryable_glyph.png",
+            "unparryable_outline": "assets/particles/unparryable_outline.png",
+            "unblockable_glyph": "assets/particles/unblockable_glyph.png",
+            "unblockable_outline": "assets/particles/unblockable_outline.png"
         }
         for key, rel_path in asset_map.items():
             full_path = os.path.join(self.script_dir, rel_path)
@@ -187,7 +224,7 @@ class VFXManager(QWidget):
                 p = QPainter(tinted)
                 p.drawPixmap(0, 0, img)
                 p.setCompositionMode(QPainter.CompositionMode_SourceAtop)
-                if not key.startswith("star1"):
+                if key.startswith("ring") or key.startswith("spark"):
                     p.fillRect(tinted.rect(), QColor(255, 220, 0)) 
                 p.end()
                 self.textures[key] = tinted
@@ -208,6 +245,17 @@ class VFXManager(QWidget):
             for _ in range(count):
                 self.particles.append(Particle(x, y, 'star', self.textures["star1"]))
 
+    def play_unparryable_indicator(self, x, y):
+        if "unparryable_outline" in self.textures and "unparryable_glyph" in self.textures:
+            self.particles.append(Particle(x, y, 'unparryable_outline', self.textures["unparryable_outline"]))
+            self.particles.append(Particle(x, y, 'unparryable_glyph', self.textures["unparryable_glyph"]))
+
+    def play_unblockable_indicator(self, x, y):
+        if "unblockable_outline" in self.textures and "unblockable_glyph" in self.textures:
+            self.particles.append(Particle(x, y, 'unblockable_outline', self.textures["unblockable_outline"]))
+            self.particles.append(Particle(x, y, 'unblockable_glyph', self.textures["unblockable_glyph"]))
+
+
     def play_parry(self, x, y):
         available_sparkles = [k for k in ["sparkle1", "sparkle2", "sparkle3"] if k in self.textures]
         if len(available_sparkles) >= 2:
@@ -222,8 +270,18 @@ class VFXManager(QWidget):
     def play_blood(self, x, y):
         for _ in range(7): self.particles.append(Particle(x, y, 'blood'))
 
+    def play_sharko_blood(self, x, y):
+        for _ in range(7): self.particles.append(Particle(x, y, 'blood_sharko'))
+
     def update_vfx(self):
-        self.particles = [p for p in self.particles if p.update(0.016)]
+        # In-place particle filtering to avoid list recreation
+        write_idx = 0
+        for i, p in enumerate(self.particles):
+            if p.update(0.016):
+                self.particles[write_idx] = p
+                write_idx += 1
+        del self.particles[write_idx:]
+        
         to_remove = []
         for lid, l in self.lasers.items():
             if not l.update_fade(): 
@@ -236,6 +294,8 @@ class VFXManager(QWidget):
                 px, py = l.origin.x() + math.cos(rad) * dist, l.origin.y() + math.sin(rad) * dist
                 self.particles.append(Particle(px, py, 'laser_square'))
         for lid in to_remove: del self.lasers[lid]
+        # Maintain z-order on top of Sharko window
+        self.raise_()
         self.update()
 
     def deinitialize(self):
@@ -270,16 +330,22 @@ class VFXManager(QWidget):
             painter.translate(p.pos.x(), p.pos.y())
             painter.rotate(p.rotation)
 
-            if p.p_type == 'blood':
-                painter.setBrush(QColor(150, 0, 0)); painter.setPen(Qt.NoPen)
-                s = p.size; painter.drawRect(QRectF(-s/2, -s/2, s, s))
-            elif p.p_type == 'block' or p.p_type == 'laser_square':
-                color = QColor(0, 180, 255) if p.p_type == 'laser_square' else QColor(255, 255, 0)
+            if p.p_type == 'blood' or p.p_type == 'blood_sharko':
+                color = self._COLOR_BLOOD if p.p_type == 'blood' else self._COLOR_BLOOD_SHARKO
                 painter.setBrush(color); painter.setPen(Qt.NoPen)
-                s = p.size; painter.drawRect(QRectF(-s/2, -s/2, s, s))
+                s = p.size
+                half_s = s / 2
+                painter.drawRect(QRectF(-half_s, -half_s, s, s))
+            elif p.p_type == 'block' or p.p_type == 'laser_square':
+                color = self._COLOR_LASER if p.p_type == 'laser_square' else self._COLOR_BLOCK
+                painter.setBrush(color); painter.setPen(Qt.NoPen)
+                s = p.size
+                half_s = s / 2
+                painter.drawRect(QRectF(-half_s, -half_s, s, s))
             else:
                 w, h = p.pixmap.width() * p.scale, p.pixmap.height() * p.scale
-                painter.drawPixmap(QRectF(-w/2, -h/2, w, h), p.pixmap, QRectF(p.pixmap.rect()))
+                half_w, half_h = w / 2, h / 2
+                painter.drawPixmap(QRectF(-half_w, -half_h, w, h), p.pixmap, QRectF(p.pixmap.rect()))
             painter.restore()
 
 
@@ -327,6 +393,7 @@ class MultiWarningOverlay(QWidget):
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.WindowTransparentForInput | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.showFullScreen()
+        self.raise_()
 
         self.active_warnings = []
 
@@ -337,6 +404,8 @@ class MultiWarningOverlay(QWidget):
         self.active_warnings.append(new_warning)
 
     def paintEvent(self, event):
+        # Maintain z-order on top of Sharko window
+        self.raise_()
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setCompositionMode(QPainter.CompositionMode_Source)
