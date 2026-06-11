@@ -37,9 +37,15 @@ class SharkoConstants:
     GREETING_ANIMATION_DELAY    = 8000
     REMOVAL_ANIMATION_DELAY     = 3800
     INACTIVE_TIME_REQUIREMENT   = 1000000000000
+    INTER_ATTACK_IDLE_TIME      = 3000
     
     # Window
-    WINDOW_SIZE                 = "357x342"
+    WINDOW_SIZE_X               = 357
+    WINDOW_SIZE_Y               = 342
+
+    TEXT_OFFSET_LEFT            = 97
+    TEXT_OFFSET_RIGHT           = 9
+
     
     # Paths
     ASSETS_PATH                 = "assets/"

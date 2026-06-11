@@ -105,6 +105,7 @@ class ScalableHealthBar(QWidget):
     def slide_out_to_hide(self):
         """Slides the health bar up and hides it. Use instead of delete to reuse the bar."""
         self._pos_animation.stop()
+        self.animation_timer.stop()  # Stop health animation timer
         
         self._pos_animation.setStartValue(self.pos())
         self._pos_animation.setEndValue(QPoint(self.x(), -self.height()))
@@ -114,8 +115,16 @@ class ScalableHealthBar(QWidget):
             self._pos_animation.finished.disconnect() # Clear old connections
         except:
             pass
+        
+        def cleanup_after_slide():
+            self.animation_timer.stop()
+            try:
+                self._pos_animation.finished.disconnect()
+            except:
+                pass
+            self.deleteLater()
             
-        self._pos_animation.finished.connect(self.deleteLater)
+        self._pos_animation.finished.connect(cleanup_after_slide)
         self._pos_animation.start()
 
     def update_health_fill(self):        

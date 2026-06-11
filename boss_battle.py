@@ -10,7 +10,6 @@ from        PIL import Image
 from        PyQt5.QtGui import QPixmap, QImage, QCursor
 from        PyQt5.QtCore import Qt, QTimer, QPoint
 
-from        icons import IconManager
 from        math_utils import MathUtils
 from        img_utils import ImgUtils
 
@@ -18,7 +17,7 @@ from        img_utils import ImgUtils
 from        shortcut_utils import DesktopUtils
 
 
-class CombatSystem(IconManager):
+class CombatSystem():
     
     @staticmethod
     def damage(self): #@staticmethod is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
@@ -129,10 +128,7 @@ class CombatSystem(IconManager):
         screen_width        = windll.user32.GetSystemMetrics(0)
         screen_diagonal     = math.sqrt(screen_height**2+screen_width**2)
         peak_x, peak_y      = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screen_diagonal)*0.7)
-        if end_x - start_x > 0:
-            peak_x = peak_x-84
-        else:
-            peak_x = peak_x-266
+        peak_x = peak_x-84 if end_x - start_x > 0 else peak_x-266
 
         P0      = (start_x, start_y)
         Pmid    = (peak_x, peak_y)
@@ -151,7 +147,7 @@ class CombatSystem(IconManager):
         offset = 0
         if end_x > start_x:
             cached_images = self.alt_jump_images
-            offset = int(self.WINDOW_SIZE.split('x')[0])//2
+            offset = self.WINDOW_SIZE_X//2
         
         last_image = None
         
@@ -170,7 +166,7 @@ class CombatSystem(IconManager):
             if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
                 if current_x-previous_x-2 > 0:
                     cached_images = self.alt_jump_images
-                    offset = int(self.WINDOW_SIZE.split('x')[0])//2
+                    offset = self.WINDOW_SIZE_X//2
                 elif current_x-previous_x+2 < 0:
                     cached_images = self.jump_images
                     offset = 0
@@ -206,18 +202,16 @@ class CombatSystem(IconManager):
                     hit_detected = True
                     CombatSystem.damage(self)
             
-            current_step = current_step + 1
+            current_step += 1
             if current_step < Steps:
                 QTimer.singleShot(int(dt*1000),step_move)
             else:
                 self.window.move(int(end_x+offset), int(end_y))
                 self.jump_images.clear()
                 self.alt_jump_images.clear()
-                if offset == 0:
-                    self.current_facing = "Right"
-                else:
-                    self.current_facing = "Left"
-
+                del self.jump_images
+                del self.alt_jump_images
+                self.current_facing = "Right" if offset == 0 else "Left"
                 if on_complete:
                     on_complete()
         step_move()
@@ -248,16 +242,12 @@ class CombatSystem(IconManager):
         desktop_working_area = wintypes.RECT()
         windll.user32.SystemParametersInfoW(self.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
         work_area_height = desktop_working_area.bottom - desktop_working_area.top
-        thickness_vertical = screen_height - work_area_height    
-        if thickness_vertical > 0:
-            taskbar_thickness = thickness_vertical
-        else:
-            taskbar_thickness = 0
-        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - 357), self.screen_y-342-taskbar_thickness
-        if end_x - start_x > 0:
-            peak_x = peak_x-84
-        else:
-            peak_x = peak_x-266
+        thickness_vertical = screen_height - work_area_height
+        taskbar_thickness = max(0, thickness_vertical)
+
+        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - self.WINDOW_SIZE_X), self.screen_y-self.WINDOW_SIZE_Y-taskbar_thickness
+        peak_x = peak_x-84 if end_x - start_x > 0 else peak_x-266
+
         P0      = (start_x, start_y)
         Pmid    = (peak_x, peak_y)
         P2      = (end_x, end_y)
@@ -278,7 +268,7 @@ class CombatSystem(IconManager):
         offset = 0
         if end_x > start_x:
             cached_images = self.alt_jump_images
-            offset = int(self.WINDOW_SIZE.split('x')[0])//2
+            offset = self.WINDOW_SIZE_X//2
 
         item = folder_view.Item(shortcut)
         start_pos = folder_view.GetItemPosition(item)
@@ -301,7 +291,7 @@ class CombatSystem(IconManager):
             if np.sign(peak_x - start_x) != np.sign(end_x - peak_x):
                 if current_x-previous_x-2 > 0:
                     cached_images = self.alt_jump_images
-                    offset = int(self.WINDOW_SIZE.split('x')[0])//2
+                    offset = self.WINDOW_SIZE_X//2
                 elif current_x-previous_x+2 < 0:
                     cached_images = self.jump_images
                     offset = 0
@@ -343,7 +333,7 @@ class CombatSystem(IconManager):
                 if not DesktopUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
                     original_count = current_count
                     shortcut = DesktopUtils.get_actual_index(hwnd_lv, item_name)
-                    print("Shortcut was probably deleted and recreated, updating index to "+str(shortcut),item_name)
+                    print(f"Shortcut was probably deleted and recreated, updating index to {shortcut}",item_name)
                     if shortcut == -1: 
                         shortcut = DesktopUtils.create_shortcut(hwnd_lv)
                         item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
@@ -356,18 +346,16 @@ class CombatSystem(IconManager):
                 hit_db = True
                 self.throw_shortcut(shortcut, mouse, speed, item_name)
 
-            current_step = current_step + 1
-            if current_step< Steps:
+            current_step += 1
+            if current_step < Steps:
                 QTimer.singleShot(int(dt*1000),step_move)
             else:
                 self.window.move(int(end_x+offset), int(end_y))
                 self.jump_images.clear()
                 self.alt_jump_images.clear()
-                if offset == 0:
-                    self.current_facing = "Right"
-                else:
-                    self.current_facing = "Left"
-
+                del self.jump_images
+                del self.alt_jump_images
+                self.current_facing = "Right" if offset == 0 else "Left"
                 if on_complete:
                     on_complete()
         step_move()
@@ -385,12 +373,12 @@ class CombatSystem(IconManager):
         center_p = (body_width // 2, body_height // 2)
         offset_x, offset_y = 0,0
         if self.current_facing == "Right":
-            offset_x = 357-body_width
-            offset_y = 342-body_height
+            offset_x = self.WINDOW_SIZE_X-body_width
+            offset_y = self.WINDOW_SIZE_Y-body_height
             current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
             self.window.move(current_x + offset_x, current_y + offset_y)
         else:
-            offset_y = 342-body_height
+            offset_y = self.WINDOW_SIZE_Y-body_height
             current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
             self.window.move(current_x + offset_x, current_y + offset_y)
         frame1db = False
@@ -470,7 +458,7 @@ class CombatSystem(IconManager):
                 clean_mask = f_alpha.point(lambda p: 255 if p > 245 else 0)
                 rotated_face.putalpha(clean_mask)
 
-                combined = Image.new("RGBA", (357, 342), (0, 0, 0, 0))
+                combined = Image.new("RGBA", (self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y), (0, 0, 0, 0))
                 combined.paste(body, (0, 0), body)
                 combined.paste(rotated_face, (0, 0), rotated_face)
                 combined.paste(corals, (0, 0), corals)
@@ -497,14 +485,13 @@ class CombatSystem(IconManager):
                 l_r_offset = 0
                 if self.current_facing != lazer_dir:
                     if self.current_facing == "Right":
-                        l_r_offset=int(self.WINDOW_SIZE.split('x')[0])//2
+                        l_r_offset=self.WINDOW_SIZE_X//2
                     else:
-                        l_r_offset=-int(self.WINDOW_SIZE.split('x')[0])//2
+                        l_r_offset=-self.WINDOW_SIZE_X//2
                 self.current_facing = lazer_dir
                 current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
                 self.window.move(current_x - offset_x + l_r_offset, current_y - offset_y)
                 self.pivot_images.clear()
-                self.pivot_images
                 if on_complete: on_complete()
         update_lazer(frame1db)
     

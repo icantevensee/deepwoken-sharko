@@ -299,7 +299,17 @@ class VFXManager(QWidget):
         self.update()
 
     def deinitialize(self):
-        self.timer.stop(); self.hide(); self.particles.clear(); self.lasers.clear(); self.deleteLater()
+        """Properly clean up all resources before deletion."""
+        try:
+            self.timer.timeout.disconnect()
+        except (RuntimeError, TypeError):
+            pass
+        self.timer.stop()
+        self.hide()
+        self.particles.clear()
+        self.lasers.clear()
+        self.textures.clear()
+        self.deleteLater()
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -355,6 +365,7 @@ class WarningInstance:
         self.rect = rect
         self.opacity = 0
         self.is_fading_out = False
+        self.exit_timer = None  # Store timer reference for cleanup
         
         self.anim = QVariantAnimation()
         self.anim.setDuration(300)
@@ -368,7 +379,10 @@ class WarningInstance:
         self.anim.finished.connect(self.loop_logic)
         self.anim.start()
 
-        QTimer.singleShot(duration * 1000, self.start_exit)
+        self.exit_timer = QTimer()
+        self.exit_timer.setSingleShot(True)
+        self.exit_timer.timeout.connect(self.start_exit)
+        self.exit_timer.start(int(duration * 1000))
 
     def update_val(self, val):
         self.opacity = val
@@ -386,6 +400,24 @@ class WarningInstance:
 
     def start_exit(self):
         self.is_fading_out = True
+
+    def cleanup(self):
+        """Clean up timers and animations."""
+        try:
+            if self.exit_timer:
+                self.exit_timer.stop()
+                try:
+                    self.exit_timer.timeout.disconnect()
+                except (RuntimeError, TypeError):
+                    pass
+        except (RuntimeError, AttributeError):
+            pass
+        try:
+            self.anim.stop()
+            self.anim.valueChanged.disconnect()
+            self.anim.finished.disconnect()
+        except (RuntimeError, TypeError, AttributeError):
+            pass
 
 class MultiWarningOverlay(QWidget):
     def __init__(self):
@@ -433,6 +465,15 @@ class MultiWarningOverlay(QWidget):
             painter.setPen(QPen(color, 4, Qt.SolidLine, Qt.FlatCap, Qt.MiterJoin))
             painter.drawRect(rect)
     def deinitialize(self):
+        """Properly clean up all warning animations before deletion."""
         for w in self.active_warnings:
-            del w
+            try:
+                w.cleanup()
+            except (RuntimeError, TypeError, AttributeError):
+                pass
+            try:
+                del w
+            except (RuntimeError, TypeError):
+                pass
         self.active_warnings.clear()
+        self.deleteLater()

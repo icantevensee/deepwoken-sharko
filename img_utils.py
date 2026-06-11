@@ -100,3 +100,17 @@ class ImgUtils:
         else:
             data = flipped.tobytes('raw', 'RGB')
             return QImage(data, flipped.width, flipped.height, QImage.Format_RGB888)
+        
+    def composite_on_base(self,base_img,text_img,IsQuestion):
+        b = base_img.copy()
+        if self.current_facing == "Left":
+            x = self.TEXT_OFFSET_LEFT
+        else:
+            x = self.TEXT_OFFSET_RIGHT
+        y = self.QUESTION_BOX_TOP_Y
+        if IsQuestion == 1:
+            y = self.QUESTION_BOX_OPTION1_Y
+        elif IsQuestion == 2:
+            y = self.QUESTION_BOX_OPTION2_Y
+        b.paste(text_img, (x, y), text_img)
+        return b
