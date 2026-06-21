@@ -1,6 +1,11 @@
+"""
+Code for all the attacks sharko can do + damage functions & mouse attack function
+"""
+
 import      time
 import      math
 import      numpy as np
+import      random
 
 import      win32api
 import      win32gui
@@ -13,8 +18,10 @@ from        PyQt5.QtCore import Qt, QTimer, QPoint
 from        math_utils import MathUtils
 from        img_utils import ImgUtils
 
+from        windows_utils import WindowsUtils
 
-from        shortcut_utils import DesktopUtils
+from        widgets import SwordWindow
+
 
 
 class CombatSystem():
@@ -54,7 +61,7 @@ class CombatSystem():
             self.block_active_until = 0
             if self.block_transition_callback:
                 try:
-                    self.block_transition_callback.stop()
+                    self.block_transition_callback.deleteLater()
                 except (RuntimeError, Exception):
                     pass
                 self.block_transition_callback = None
@@ -68,7 +75,7 @@ class CombatSystem():
             self.f_key_held = False
             if self.block_transition_callback:
                 try:
-                    self.block_transition_callback.stop()
+                    self.block_transition_callback.deleteLater()
                 except (RuntimeError, Exception):
                     pass
                 self.block_transition_callback = None
@@ -83,6 +90,8 @@ class CombatSystem():
             pass
 
     def damage_sharko(self):
+        if not hasattr(self,"particles_manager"):
+            return
         self.active_bar.health -= self.M1_DAMAGE
         self.active_bar.percentage = self.active_bar.health/self.MAX_HEALTH
         mouse_x, mouse_y = win32api.GetCursorPos()
@@ -110,6 +119,12 @@ class CombatSystem():
             
 
     def jump(self,jump_end,speed,on_complete=None):
+        if self.fight_mode_active == False:
+            return
+        if hasattr(self, "temp_combat_timer") and self.temp_combat_timer:
+            self.temp_combat_timer.stop()
+            self.temp_combat_timer.deleteLater()
+            self.temp_combat_timer = None
         self.jump_images = {
             'jump1': QPixmap(os.path.join(self.IMAGES_PATH, 'jump1.png')),
             'jump2': QPixmap(os.path.join(self.IMAGES_PATH, 'jump2.png')),
@@ -117,12 +132,19 @@ class CombatSystem():
             'jump4': QPixmap(os.path.join(self.IMAGES_PATH, 'jump4.png'))
         }
         self.alt_jump_images = {
-            'jump1': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png')).convert('RGBA'))),
-            'jump2': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png')).convert('RGBA'))),
-            'jump3': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png')).convert('RGBA'))),
-            'jump4': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png')).convert('RGBA')))
+            'jump1': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png'))]][0])),
+            'jump2': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png'))]][0])),
+            'jump3': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png'))]][0])),
+            'jump4': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png'))]][0]))
         }
         end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], self.window.geometry().x(), self.window.geometry().y()
+        cached_images = self.jump_images
+        offset = 0
+        if end_x > start_x:
+            cached_images = self.alt_jump_images
+            offset = self.WINDOW_SIZE_X//2
+            end_x = end_x - offset
+        
         dist                = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
         screen_height       = windll.user32.GetSystemMetrics(1)
         screen_width        = windll.user32.GetSystemMetrics(0)
@@ -143,14 +165,9 @@ class CombatSystem():
         points  = B(ts)
         hit_detected    = False
         current_step    = 2
-        cached_images = self.jump_images
-        offset = 0
-        if end_x > start_x:
-            cached_images = self.alt_jump_images
-            offset = self.WINDOW_SIZE_X//2
+
         
         last_image = None
-        
         def step_move():
             nonlocal last_image,current_step, hit_detected, offset, cached_images
             current_x = math.floor(points[current_step-1][0])
@@ -224,28 +241,26 @@ class CombatSystem():
             'jump4': QPixmap(os.path.join(self.IMAGES_PATH, 'jump4.png'))
         }
         self.alt_jump_images = {
-            'jump1': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png')).convert('RGBA'))),
-            'jump2': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png')).convert('RGBA'))),
-            'jump3': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png')).convert('RGBA'))),
-            'jump4': QPixmap.fromImage(ImgUtils._flip_image(Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png')).convert('RGBA')))
+            'jump1': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png'))]][0])),
+            'jump2': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png'))]][0])),
+            'jump3': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png'))]][0])),
+            'jump4': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png'))]][0]))
         }
         peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, self.window.geometry().x(), self.window.geometry().y()
-        folder_view,hwnd_lv = DesktopUtils.get_desktop_interfaces(
+        folder_view,hwnd_lv = WindowsUtils.get_desktop_interfaces(
             self.CLSID_ShellWindows,
             self.IID_IFolderView,
             self.SWC_DESKTOP,
             self.SWFO_NEEDDISPATCH
         )
-        item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
+        item_name = WindowsUtils.get_item_text(hwnd_lv, shortcut)
         screen_height = windll.user32.GetSystemMetrics(1)
         screen_width = windll.user32.GetSystemMetrics(0)
-        desktop_working_area = wintypes.RECT()
-        windll.user32.SystemParametersInfoW(self.SPI_GETWORKAREA, 0, byref(desktop_working_area), 0)
-        work_area_height = desktop_working_area.bottom - desktop_working_area.top
+        work_area_height = WindowsUtils.get_work_area_height()
         thickness_vertical = screen_height - work_area_height
         taskbar_thickness = max(0, thickness_vertical)
 
-        end_x, end_y = DesktopUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - self.WINDOW_SIZE_X), self.screen_y-self.WINDOW_SIZE_Y-taskbar_thickness
+        end_x, end_y = WindowsUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - self.WINDOW_SIZE_X), self.screen_y-self.WINDOW_SIZE_Y-taskbar_thickness
         peak_x = peak_x-84 if end_x - start_x > 0 else peak_x-266
 
         P0      = (start_x, start_y)
@@ -257,7 +272,6 @@ class CombatSystem():
         T       = 1*(L2/(speed*1800))**0.4
         Steps   = math.floor(T*60)
         dt      = T/Steps
-        print(dt, "dttt")
         original_count = win32gui.SendMessage(hwnd_lv, self.LVM_GETITEMCOUNT, 0, 0)
         ts = np.linspace(0, 1, Steps)
         points  = B(ts)
@@ -330,13 +344,13 @@ class CombatSystem():
             
             if not hit_db:
                 current_count = win32gui.SendMessage(hwnd_lv, self.LVM_GETITEMCOUNT, 0, 0)
-                if not DesktopUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
+                if not WindowsUtils.icon_exists(hwnd_lv, shortcut) or current_count != original_count:
                     original_count = current_count
-                    shortcut = DesktopUtils.get_actual_index(hwnd_lv, item_name)
+                    shortcut = WindowsUtils.get_actual_index(hwnd_lv, item_name)
                     print(f"Shortcut was probably deleted and recreated, updating index to {shortcut}",item_name)
                     if shortcut == -1: 
-                        shortcut = DesktopUtils.create_shortcut(hwnd_lv)
-                        item_name = DesktopUtils.get_item_text(hwnd_lv, shortcut)
+                        shortcut = WindowsUtils.create_shortcut(hwnd_lv)
+                        item_name = WindowsUtils.get_item_text(hwnd_lv, shortcut)
 
                 win32gui.SendMessage(hwnd_lv, self.LVM_SETITEMPOSITION, shortcut, pos)
             
@@ -350,6 +364,8 @@ class CombatSystem():
             if current_step < Steps:
                 QTimer.singleShot(int(dt*1000),step_move)
             else:
+                if hasattr(self,"screen_shaker") and self.screen_shaker:
+                    self.screen_shaker.shake(duration_ms=2500, intensity=35)
                 self.window.move(int(end_x+offset), int(end_y))
                 self.jump_images.clear()
                 self.alt_jump_images.clear()
@@ -382,12 +398,12 @@ class CombatSystem():
             current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
             self.window.move(current_x + offset_x, current_y + offset_y)
         frame1db = False
+        lastangle = 0
+        damagetimer = 0
         Indicator_Length = 0.5*1000
         lazer_dir = None
-        self.lazer_timer = None
-        
-        def update_lazer(frame1db,lastangle=0,damagetimer = 0):
-            nonlocal lazer_dir
+        def update_lazer():
+            nonlocal lazer_dir,frame1db, lastangle, damagetimer
             elapsed = (time.time() - start_time) * 1000
             if elapsed < duration_ms:
                 window_x, window_y = self.window.geometry().x(), self.window.geometry().y()
@@ -476,11 +492,11 @@ class CombatSystem():
                 self.label.setPixmap(final_pixmap)
                 
                 # Schedule next update
-                self.lazer_timer = QTimer()
-                self.lazer_timer.timeout.connect(lambda: update_lazer(frame1db, lastangle, damagetimer))
-                self.lazer_timer.setSingleShot(True)
-                self.lazer_timer.start(30)
             else:
+                if hasattr(self, 'temp_combat_timer') and self.temp_combat_timer:
+                    self.temp_combat_timer.stop()
+                    self.temp_combat_timer.deleteLater()
+                    self.temp_combat_timer = None
                 self.particles_manager.remove_laser("Sharko_Lazer")
                 l_r_offset = 0
                 if self.current_facing != lazer_dir:
@@ -491,7 +507,103 @@ class CombatSystem():
                 self.current_facing = lazer_dir
                 current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
                 self.window.move(current_x - offset_x + l_r_offset, current_y - offset_y)
-                self.pivot_images.clear()
+                if hasattr(self, 'pivot_images') and self.pivot_images:
+                    for img in self.pivot_images.values():
+                        img.close() 
+                    self.pivot_images.clear()
+                    del self.pivot_images
                 if on_complete: on_complete()
-        update_lazer(frame1db)
-    
+
+        self.temp_combat_timer = QTimer()
+        self.temp_combat_timer.timeout.connect(update_lazer)
+        self.temp_combat_timer.start(30)
+
+
+    def area_belly_flop(self, warning_time, num_subdivisions, num_subdivisions_to_attack, work_area_height, on_complete=None):
+        original_x = self.window.geometry().x()
+        jump_end = -400 if original_x < self.screen_x // 2 else self.screen_x + 400
+        groups = []
+        subdivision_x_length = int(self.screen_x / num_subdivisions)
+
+        def create_warnings(on_complete=None):
+            nonlocal groups
+            if self.fight_mode_active == False:
+                return
+            subdivision_pool = list(range(1, num_subdivisions + 1))
+            lethal_subdivisions = random.sample(subdivision_pool, num_subdivisions_to_attack)
+            
+            lethal_subdivisions.sort()
+            
+            if lethal_subdivisions:
+                current_group = [lethal_subdivisions[0]]
+                
+                for sub in lethal_subdivisions[1:]:
+                    if sub == current_group[-1] + 1:
+                        current_group.append(sub)
+                    else:
+                        groups.append(current_group)
+                        current_group = [sub]
+                groups.append(current_group)
+            
+            for i, group in enumerate(groups):
+                start_subdivision = group[0]
+                group_count = len(group)
+                merged_width = group_count * subdivision_x_length
+                calculated_x = (start_subdivision - 1) * subdivision_x_length
+
+                is_last = (i == len(groups) - 1)
+                callback_to_pass = on_complete if is_last else None
+                
+                self.warning_manager.trigger_warning(merged_width, self.screen_y, warning_time, calculated_x, 0, on_complete=callback_to_pass)
+
+        def create_attack(on_complete):
+            if self.fight_mode_active == False:
+                return
+            for group in groups:
+                start_subdivision = group[0]
+                group_count = len(group)
+                merged_width = group_count * subdivision_x_length
+                calculated_x = (start_subdivision - 1) * subdivision_x_length
+                scale = merged_width / self.FALLING_SHARKO_SIZE_X
+                vel = self.screen_y / 23
+
+                self.particles_manager.play_falling_sharko(calculated_x+merged_width//2, -0.5*self.FALLING_SHARKO_SIZE_Y*scale, scale, vel, self.FALLING_SHARKO_SIZE_X, self.FALLING_SHARKO_SIZE_Y)
+            self.temp_combat_timer = QTimer()
+            self.temp_combat_timer.setSingleShot(True)
+            self.temp_combat_timer.timeout.connect(on_complete)
+            self.temp_combat_timer.start(int((16**2)*1.5))
+
+        CombatSystem.jump(
+            self,
+            [jump_end, work_area_height - 343],
+            0.4,
+            on_complete=lambda: create_warnings(
+                on_complete=lambda: create_attack(
+                    on_complete=lambda: CombatSystem.jump(
+                        self,
+                        [original_x, work_area_height - 343],
+                        0.4,
+                        on_complete=on_complete
+                    )
+                )
+            )
+        )
+
+    def summon_sword(self):
+        if hasattr(self, "sword_window") and self.sword_window:
+            return
+        self.sword_window = SwordWindow(lambda: self.current_facing,damage_callback=lambda:CombatSystem.damage(self))
+        self.sword_window.initialize(self.window)
+
+    def sword_combo(self, num_attacks):
+        if not hasattr(self, "sword_window") or not self.sword_window:
+            return
+        
+        self.sword_window.set_follow_mode("mouse")
+
+        for attack in range(num_attacks):
+            self._single_shot(attack*1000+500,self.sword_window.attack)
+        self._single_shot(num_attacks*1000+500,lambda: self.sword_window.set_follow_mode("window",self.window))
+
+
+        

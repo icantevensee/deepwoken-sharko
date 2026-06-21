@@ -49,8 +49,20 @@ class ScalableHealthBar(QWidget):
         self.setMinimumSize(400, 160)
         
         # 2. Load Resources
+        def tint_pixmap(pixmap,color):
+            painter = QPainter(pixmap)
+            original = QPixmap(pixmap)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
+            painter.fillRect(pixmap.rect(),color)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+            painter.drawPixmap(0,0,original)
+            painter.end() 
+
+        barcolor = QColor(230,191,124)
         self.bar_img = QPixmap(BAR_IMG_PATH)
+        tint_pixmap(self.bar_img, barcolor)
         self.marker_img = QPixmap(MARKER_PATH)
+        tint_pixmap(self.marker_img, barcolor)
         self.icon_img = QPixmap(CENTER_ICON_PATH)
         self.original_crop_border = 16 
         self.percentage = 1.0
@@ -122,6 +134,8 @@ class ScalableHealthBar(QWidget):
                 self._pos_animation.finished.disconnect()
             except:
                 pass
+            self.animation_timer.deleteLater()
+            self.animation_timer = None
             self.deleteLater()
             
         self._pos_animation.finished.connect(cleanup_after_slide)

@@ -7,27 +7,82 @@ Provides Windows desktop manipulation utilities for:
 - Window handle operations
 - Desktop property queries and modifications
 """
-import      ctypes
 import      os
 import      time
-import      win32gui
-import      win32process
+
+import      ctypes
+
 import      winshell
 from        ctypes import wintypes
 from        win32com.client import Dispatch
 import      pythoncom
+
+import      win32con
+import      win32gui
+import      win32process
 import      win32com.client as wcomcli
 from        win32com.shell import shell, shellcon  # type: ignore
+
 from        constants import SharkoConstants
 
 
-class DesktopUtils:
+class WindowsUtils:
     """Utilities for desktop icon manipulation and window management."""
     
     @staticmethod
     def clamp(v, lo, hi):
         """Clamp value between lo and hi bounds."""
         return max(lo, min(hi, v))
+    
+    @staticmethod
+    def disable_desktop_grid_and_autoarrange_universal():
+
+        desktop_shell_view = [0]
+
+        def enum_windows_callback(hwnd, extra):
+            shell_view = win32gui.FindWindowEx(hwnd, 0, "SHELLDLL_DefView", None)
+            if shell_view != 0:
+                desktop_shell_view[0] = shell_view
+                return False
+            return True
+
+        win32gui.EnumWindows(enum_windows_callback, None)
+        shell_view = desktop_shell_view[0]
+
+        if shell_view == 0:
+            print("Could not find the Desktop window structure.")
+            return
+
+        list_view = win32gui.FindWindowEx(shell_view, 0, "SysListView32", None)
+        
+        if list_view == 0:
+            print("Could not find the Desktop icon list view control.")
+            return
+
+        LVS_AUTOARRANGE = 0x0100 
+        current_style = win32gui.GetWindowLong(list_view, win32con.GWL_STYLE)
+        new_style = current_style & ~LVS_AUTOARRANGE
+        win32gui.SetWindowLong(list_view, win32con.GWL_STYLE, new_style)
+
+
+        current_ext_style = win32gui.SendMessage(list_view, SharkoConstants.LVM_GETEXTENDEDLISTVIEWSTYLE, 0, 0)
+        
+        new_ext_style = current_ext_style & ~SharkoConstants.LVS_EX_SNAPTOGRID
+
+        win32gui.SendMessage(list_view, SharkoConstants.LVM_SETEXTENDEDLISTVIEWSTYLE, SharkoConstants.LVS_EX_SNAPTOGRID, new_ext_style)
+
+        win32gui.RedrawWindow(
+            list_view, None, None, 
+            win32con.RDW_INVALIDATE | win32con.RDW_UPDATENOW | win32con.RDW_ERASE | win32con.RDW_FRAME
+        )
+
+    @staticmethod
+    def get_work_area_height():
+        desktop_working_area = wintypes.RECT()
+        ctypes.windll.user32.SystemParametersInfoW(
+            SharkoConstants.SPI_GETWORKAREA, 0, ctypes.byref(desktop_working_area), 0
+        )
+        return desktop_working_area.bottom - desktop_working_area.top
 
     @staticmethod
     def icon_exists(hwnd_lv, index, lvm_getitemcount=0x1004):
@@ -195,13 +250,12 @@ class DesktopUtils:
         start_time = time.time()
         
         while time.time() - start_time < 200:
-            idx = DesktopUtils.get_actual_index(hwnd_lv, name_str)
+            idx = WindowsUtils.get_actual_index(hwnd_lv, name_str)
             if idx != -1:
-                confirmed_text = DesktopUtils.get_item_text(hwnd_lv, idx)
-                if confirmed_text == name_str and DesktopUtils.icon_exists(hwnd_lv, idx):
+                confirmed_text = WindowsUtils.get_item_text(hwnd_lv, idx)
+                if confirmed_text == name_str and WindowsUtils.icon_exists(hwnd_lv, idx):
                     return idx
             time.sleep(0.1)
         
         print("Failed to find shortcut before timeout, defaulting to last index.")
-        new_index = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0) - 1
-        return new_index
+        return win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0) - 1

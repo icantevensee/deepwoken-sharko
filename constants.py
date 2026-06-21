@@ -36,12 +36,15 @@ class SharkoConstants:
     IDLE_ANIMATION_DELAY        = 20000
     GREETING_ANIMATION_DELAY    = 8000
     REMOVAL_ANIMATION_DELAY     = 3800
-    INACTIVE_TIME_REQUIREMENT   = 1000000000000
-    INTER_ATTACK_IDLE_TIME      = 3000
+    INACTIVE_TIME_REQUIREMENT   = 60000
+    INTER_ATTACK_IDLE_TIME      = 5000
     
     # Window
     WINDOW_SIZE_X               = 357
     WINDOW_SIZE_Y               = 342
+
+    FALLING_SHARKO_SIZE_X       = 696
+    FALLING_SHARKO_SIZE_Y       = 772
 
     TEXT_OFFSET_LEFT            = 97
     TEXT_OFFSET_RIGHT           = 9
@@ -84,6 +87,8 @@ class SharkoConstants:
     IID_IFolderView         = "{CDE725B0-CCC9-4519-917E-325D72FAB4CE}"
     
     # Windows API constants
+    LVS_EX_SNAPTOGRID       = 0x00080000
+    WDA_EXCLUDEFROMCAPTURE  = 0x00000011
     SWC_DESKTOP             = 0x08
     SWFO_NEEDDISPATCH       = 0x01
     SPI_GETWORKAREA         = 0x0030
@@ -92,6 +97,9 @@ class SharkoConstants:
     LVM_GETITEMW            = 0x1000 + 75
     LVIF_TEXT               = 0x0001
     LVM_GETITEMTEXTW        = 0x1000 + 115
+    LVM_FIRST               = 0x1000
+    LVM_GETEXTENDEDLISTVIEWSTYLE = LVM_FIRST + 55
+    LVM_SETEXTENDEDLISTVIEWSTYLE = LVM_FIRST + 54
     
     # Movement & Physics
     WALKSPEED = 230  # Pixels per second
@@ -102,7 +110,6 @@ class SharkoConstants:
     # Combat Mechanics
     PARRY_WINDOW            = 0.3  # seconds
     PARRY_BLOCK_COOLDOWN    = 0.75  # seconds
-    ATTACL_WINDOW            = 0.3  # seconds
     ATTACK_COOLDOWN    = 0.75  # seconds
     
     # UI & Text Rendering
@@ -151,9 +158,9 @@ class SharkoConstants:
     file.close()
 
     file = open('Questions.txt', 'r', encoding='utf-8')
-    removal_intro_lines = file.readlines()
+    question_lines = file.readlines()
     Questions = []
-    for index, line in enumerate(removal_intro_lines):
+    for index, line in enumerate(question_lines):
         decoded = _decode_escapes(line.strip())
         current_question = int(index/5)
         current_line  = index - current_question*5

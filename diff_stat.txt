@@ -1,0 +1,10 @@
+﻿ boss_bar.py       |  14 +
+ boss_battle.py    | 190 +++++++++---
+ constants.py      |  17 +-
+ icons.py          |  28 +-
+ img_utils.py      |  12 +-
+ sharko.py         | 886 ++++++++++++++++++++++++++----------------------------
+ shortcut_utils.py |  72 ++++-
+ vfx_manager.py    | 256 +++++++++++++---
+ widgets.py        | 526 +++++++++++++++++++++++++++++++-
+ 9 files changed, 1410 insertions(+), 591 deletions(-)

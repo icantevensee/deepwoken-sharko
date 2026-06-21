@@ -13,7 +13,7 @@ from        win32com.shell import shellcon  # type: ignore
 import      win32gui
 import      win32api
 from        constants import SharkoConstants
-from        shortcut_utils import DesktopUtils
+from        windows_utils import WindowsUtils
 from boss_battle import CombatSystem
 
 throw_lock = threading.Lock()
@@ -38,7 +38,7 @@ class IconManager:
             self.thrown_icons.add(name)
         try:
 
-            folder_view, hwnd_lv = DesktopUtils.get_desktop_interfaces(
+            folder_view, hwnd_lv = WindowsUtils.get_desktop_interfaces(
                 SharkoConstants.CLSID_ShellWindows,
                 SharkoConstants.IID_IFolderView,
                 SharkoConstants.SWC_DESKTOP,
@@ -74,11 +74,11 @@ class IconManager:
             over_x = x0 + dx * (1+(0.1/speed_factor))
             over_y = y0 + dy * (1+(0.1/speed_factor))
 
-            over_x = DesktopUtils.clamp(over_x, 0, screen_w - cell_h // 2)
-            over_y = DesktopUtils.clamp(over_y, 0, screen_h - cell_h)
+            over_x = WindowsUtils.clamp(over_x, 0, screen_w - cell_h // 2)
+            over_y = WindowsUtils.clamp(over_y, 0, screen_h - cell_h)
 
-            target_x = DesktopUtils.clamp(end_x, 0, screen_w - cell_h // 2)
-            target_y = DesktopUtils.clamp(end_y, 0, screen_h - cell_h)
+            target_x = WindowsUtils.clamp(end_x, 0, screen_w - cell_h // 2)
+            target_y = WindowsUtils.clamp(end_y, 0, screen_h - cell_h)
 
             ctrl_x = (x0 + target_x) // 2
             ctrl_y = min(y0, over_y) - 300
@@ -90,9 +90,9 @@ class IconManager:
 
             for i in range(steps + 1):
                 current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
-                if not DesktopUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
+                if not WindowsUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
                     original_count = current_count
-                    index = DesktopUtils.get_actual_index(hwnd_lv, item_name)
+                    index = WindowsUtils.get_actual_index(hwnd_lv, item_name)
                     if index == -1: 
                         with throw_lock:
                             self.thrown_icons.discard(name)
@@ -119,13 +119,13 @@ class IconManager:
             bob_steps = 45
 
             dist = math.dist((over_x, over_y), (target_x, target_y))
-            dip_amount = DesktopUtils.clamp(dist * 0.15, 5, 80)
+            dip_amount = WindowsUtils.clamp(dist * 0.15, 5, 80)
 
             for i in range(bob_steps + 1):
                 current_count = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0)
-                if not DesktopUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
+                if not WindowsUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
                     original_count = current_count
-                    index = DesktopUtils.get_actual_index(hwnd_lv, item_name)
+                    index = WindowsUtils.get_actual_index(hwnd_lv, item_name)
                     if index == -1: 
                         with throw_lock:
                             self.thrown_icons.discard(name)
@@ -144,8 +144,8 @@ class IconManager:
                 y = base_y + dip
                 x = target_x + (over_x - target_x) * t
 
-                x = DesktopUtils.clamp(x, 0, screen_w - cell_h // 2)
-                y = DesktopUtils.clamp(y, 0, screen_h - cell_h)
+                x = WindowsUtils.clamp(x, 0, screen_w - cell_h // 2)
+                y = WindowsUtils.clamp(y, 0, screen_h - cell_h)
 
                 pos = win32api.MAKELONG(int(x), int(y))
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)
@@ -168,7 +168,7 @@ class IconManager:
     def get_closest_icons(self, n):
         pythoncom.CoInitialize()
         try:
-            folder_view, _ = DesktopUtils.get_desktop_interfaces(
+            folder_view, _ = WindowsUtils.get_desktop_interfaces(
                 SharkoConstants.CLSID_ShellWindows,
                 SharkoConstants.IID_IFolderView,
                 SharkoConstants.SWC_DESKTOP,
