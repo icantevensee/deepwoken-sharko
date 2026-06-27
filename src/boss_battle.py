@@ -6,21 +6,21 @@ import      time
 import      math
 import      numpy as np
 import      random
-
-import      win32api
-import      win32gui
-from        ctypes import windll, wintypes, byref
 import      os
-from        PIL import Image
-from        PyQt5.QtGui import QPixmap, QImage, QCursor
-from        PyQt5.QtCore import Qt, QTimer, QPoint
 
-from        math_utils import MathUtils
-from        img_utils import ImgUtils
+import                     win32api
+import                     win32gui
 
-from        windows_utils import WindowsUtils
+from ctypes         import windll, wintypes, byref
+from PIL            import Image
+from PyQt5.QtGui    import QPixmap, QImage, QCursor
+from PyQt5.QtCore   import Qt, QTimer, QPoint
 
-from        widgets import SwordWindow
+from math_utils     import MathUtils
+from img_utils      import ImgUtils
+from windows_utils  import WindowsUtils
+
+from widgets        import SwordWindow
 
 
 
@@ -28,7 +28,7 @@ class CombatSystem():
     
     @staticmethod
     def damage(self): #@staticmethod is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
-        if not hasattr(self, 'particles_manager'):
+        if not hasattr(self, "particles_manager"):
             return
         current_time = time.time()
         mouse_x, mouse_y = win32api.GetCursorPos()
@@ -42,7 +42,7 @@ class CombatSystem():
             if time_held >= self.PARRY_WINDOW:
                 self.last_parry_block_time = 0
                 try:
-                    self.sounds(self.sounds_group['block'])
+                    self.sounds(self.sounds_group["block"])
                 except Exception as e:
                     print(f"Error playing block sound: {e}")
                 if self.particles_manager:
@@ -50,7 +50,7 @@ class CombatSystem():
             else:
                 self.last_parry_block_time = 0
                 try:
-                    self.sounds(self.sounds_group['parry'])
+                    self.sounds(self.sounds_group["parry"])
                 except Exception as e:
                     print(f"Error playing parry sound: {e}")
                 if self.particles_manager:
@@ -85,20 +85,20 @@ class CombatSystem():
             self.particles_manager.play_blood(mouse_x, mouse_y)
         try:
             # Try to play a hit/damage sound if it exists
-            self.sounds(self.sounds_group['hit'])
+            self.sounds(self.sounds_group["hit"])
         except Exception as e:
             pass
 
     def damage_sharko(self):
         if not hasattr(self,"particles_manager"):
             return
-        self.active_bar.health -= self.M1_DAMAGE
-        self.active_bar.percentage = self.active_bar.health/self.MAX_HEALTH
+        self.bar_guis.health -= self.M1_DAMAGE
+        self.bar_guis.percentage = self.bar_guis.health/self.MAX_HEALTH
         mouse_x, mouse_y = win32api.GetCursorPos()
         self.particles_manager.play_sharko_blood(mouse_x, mouse_y)
         try:
             # Try to play a hit/damage sound if it exists
-            self.sounds(self.sounds_group['hit'])
+            self.sounds(self.sounds_group["hit"])
         except Exception as e:
             pass
             
@@ -126,16 +126,16 @@ class CombatSystem():
             self.temp_combat_timer.deleteLater()
             self.temp_combat_timer = None
         self.jump_images = {
-            'jump1': QPixmap(os.path.join(self.IMAGES_PATH, 'jump1.png')),
-            'jump2': QPixmap(os.path.join(self.IMAGES_PATH, 'jump2.png')),
-            'jump3': QPixmap(os.path.join(self.IMAGES_PATH, 'jump3.png')),
-            'jump4': QPixmap(os.path.join(self.IMAGES_PATH, 'jump4.png'))
+            "jump1": QPixmap(os.path.join(self.IMAGES_PATH, "jump1.png")),
+            "jump2": QPixmap(os.path.join(self.IMAGES_PATH, "jump2.png")),
+            "jump3": QPixmap(os.path.join(self.IMAGES_PATH, "jump3.png")),
+            "jump4": QPixmap(os.path.join(self.IMAGES_PATH, "jump4.png"))
         }
         self.alt_jump_images = {
-            'jump1': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png'))]][0])),
-            'jump2': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png'))]][0])),
-            'jump3': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png'))]][0])),
-            'jump4': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png'))]][0]))
+            "jump1": QPixmap.fromImage(ImgUtils._flip_image([(img.convert("RGBA"), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, "jump1.png"))]][0])),
+            "jump2": QPixmap.fromImage(ImgUtils._flip_image([(img.convert("RGBA"), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, "jump2.png"))]][0])),
+            "jump3": QPixmap.fromImage(ImgUtils._flip_image([(img.convert("RGBA"), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, "jump3.png"))]][0])),
+            "jump4": QPixmap.fromImage(ImgUtils._flip_image([(img.convert("RGBA"), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, "jump4.png"))]][0]))
         }
         end_x, end_y, start_x, start_y = jump_end[0], jump_end[1], self.window.geometry().x(), self.window.geometry().y()
         cached_images = self.jump_images
@@ -152,21 +152,10 @@ class CombatSystem():
         peak_x, peak_y      = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screen_diagonal)*0.7)
         peak_x = peak_x-84 if end_x - start_x > 0 else peak_x-266
 
-        P0      = (start_x, start_y)
-        Pmid    = (peak_x, peak_y)
-        P2      = (end_x, end_y)
-        B, P1   = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
-        L2      = MathUtils.quadratic_length(P0, P1, P2, n=2000)
-        
-        T       = 1*(L2/(speed*1800))**0.4
-        Steps   = math.floor(T*30)
-        dt      = T/Steps
-        ts = np.linspace(0, 1, Steps)
-        points  = B(ts)
+        points, Steps, dt = MathUtils.calculate_jump_trajectory(start_x, start_y, peak_x, peak_y, end_x, end_y, speed)
+
         hit_detected    = False
         current_step    = 2
-
-        
         last_image = None
         def step_move():
             nonlocal last_image,current_step, hit_detected, offset, cached_images
@@ -190,13 +179,13 @@ class CombatSystem():
 
             new_image = None
             if slope > 0.5:
-                new_image = cached_images['jump1']
+                new_image = cached_images["jump1"]
             elif slope < -4:
-                new_image = cached_images['jump4']
+                new_image = cached_images["jump4"]
             elif slope < -0.5:
-                new_image = cached_images['jump3']
+                new_image = cached_images["jump3"]
             else:
-                new_image = cached_images['jump2']
+                new_image = cached_images["jump2"]
             
             if new_image != last_image:
                 self.label.setPixmap(new_image)
@@ -235,16 +224,16 @@ class CombatSystem():
 
     def jump_and_hit(self,jump_peak,shortcut,speed,on_complete=None):
         self.jump_images = {
-            'jump1': QPixmap(os.path.join(self.IMAGES_PATH, 'jump1.png')),
-            'jump2': QPixmap(os.path.join(self.IMAGES_PATH, 'jump2.png')),
-            'jump3': QPixmap(os.path.join(self.IMAGES_PATH, 'jump3.png')),
-            'jump4': QPixmap(os.path.join(self.IMAGES_PATH, 'jump4.png'))
+            "jump1": QPixmap(os.path.join(self.IMAGES_PATH, "jump1.png")),
+            "jump2": QPixmap(os.path.join(self.IMAGES_PATH, "jump2.png")),
+            "jump3": QPixmap(os.path.join(self.IMAGES_PATH, "jump3.png")),
+            "jump4": QPixmap(os.path.join(self.IMAGES_PATH, "jump4.png"))
         }
         self.alt_jump_images = {
-            'jump1': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump1.png'))]][0])),
-            'jump2': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump2.png'))]][0])),
-            'jump3': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump3.png'))]][0])),
-            'jump4': QPixmap.fromImage(ImgUtils._flip_image([(img.convert('RGBA'), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, 'jump4.png'))]][0]))
+            "jump1": QPixmap.fromImage(ImgUtils._flip_image([(img.convert("RGBA"), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, "jump1.png"))]][0])),
+            "jump2": QPixmap.fromImage(ImgUtils._flip_image([(img.convert("RGBA"), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, "jump2.png"))]][0])),
+            "jump3": QPixmap.fromImage(ImgUtils._flip_image([(img.convert("RGBA"), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, "jump3.png"))]][0])),
+            "jump4": QPixmap.fromImage(ImgUtils._flip_image([(img.convert("RGBA"), img.close())[0] for img in [Image.open(os.path.join(self.IMAGES_PATH, "jump4.png"))]][0]))
         }
         peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1]-210, self.window.geometry().x(), self.window.geometry().y()
         folder_view,hwnd_lv = WindowsUtils.get_desktop_interfaces(
@@ -263,18 +252,10 @@ class CombatSystem():
         end_x, end_y = WindowsUtils.clamp(peak_x+(peak_x-start_x)/2+np.sign(peak_x-start_x)*210, 0, screen_width - self.WINDOW_SIZE_X), self.screen_y-self.WINDOW_SIZE_Y-taskbar_thickness
         peak_x = peak_x-84 if end_x - start_x > 0 else peak_x-266
 
-        P0      = (start_x, start_y)
-        Pmid    = (peak_x, peak_y)
-        P2      = (end_x, end_y)
-        B, P1   = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
-        L2      = MathUtils.quadratic_length(P0, P1, P2, n=2000)
-        
-        T       = 1*(L2/(speed*1800))**0.4
-        Steps   = math.floor(T*60)
-        dt      = T/Steps
+        points, Steps, dt = MathUtils.calculate_jump_trajectory(start_x, start_y, peak_x, peak_y, end_x, end_y, speed)
+
         original_count = win32gui.SendMessage(hwnd_lv, self.LVM_GETITEMCOUNT, 0, 0)
-        ts = np.linspace(0, 1, Steps)
-        points  = B(ts)
+
         hit_db          = False
         hit_detected    = False
         current_step    = 2
@@ -312,13 +293,13 @@ class CombatSystem():
 
             new_image = None
             if slope > 0.5:
-                new_image = cached_images['jump1']
+                new_image = cached_images["jump1"]
             elif slope < -4:
-                new_image = cached_images['jump4']
+                new_image = cached_images["jump4"]
             elif slope < -0.5:
-                new_image = cached_images['jump3']
+                new_image = cached_images["jump3"]
             else:
-                new_image = cached_images['jump2']
+                new_image = cached_images["jump2"]
             
             if new_image != last_image:
                 self.label.setPixmap(new_image)
@@ -378,14 +359,14 @@ class CombatSystem():
 
     def lazer(self, duration_ms, on_complete=None):
         self.pivot_images = {
-            'Pivot_Body': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Body.png')).convert("RGBA"),
-            'Pivot_Face': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Face.png')).convert("RGBA"),
-            'Pivot_Corals': Image.open(os.path.join(self.IMAGES_PATH, 'Pivot_Corals.png')).convert("RGBA")
+            "Pivot_Body": Image.open(os.path.join(self.IMAGES_PATH, "Pivot_Body.png")).convert("RGBA"),
+            "Pivot_Face": Image.open(os.path.join(self.IMAGES_PATH, "Pivot_Face.png")).convert("RGBA"),
+            "Pivot_Corals": Image.open(os.path.join(self.IMAGES_PATH, "Pivot_Corals.png")).convert("RGBA")
         }
 
         start_time = time.time()
-        body_width = self.pivot_images['Pivot_Body'].width
-        body_height = self.pivot_images['Pivot_Body'].height
+        body_width = self.pivot_images["Pivot_Body"].width
+        body_height = self.pivot_images["Pivot_Body"].height
         center_p = (body_width // 2, body_height // 2)
         offset_x, offset_y = 0,0
         if self.current_facing == "Right":
@@ -420,9 +401,9 @@ class CombatSystem():
                     img = self.pivot_images[name]
                     return  img.transpose(Image.FLIP_LEFT_RIGHT) if lazer_dir == "Left" else img
 
-                body = get_dir_img('Pivot_Body')
-                face = get_dir_img('Pivot_Face')
-                corals = get_dir_img('Pivot_Corals')
+                body = get_dir_img("Pivot_Body")
+                face = get_dir_img("Pivot_Face")
+                corals = get_dir_img("Pivot_Corals")
 
                 rel_x = mouse_x - screen_center_x
                 rel_y = mouse_y - screen_center_y
@@ -493,7 +474,7 @@ class CombatSystem():
                 
                 # Schedule next update
             else:
-                if hasattr(self, 'temp_combat_timer') and self.temp_combat_timer:
+                if hasattr(self, "temp_combat_timer") and self.temp_combat_timer:
                     self.temp_combat_timer.stop()
                     self.temp_combat_timer.deleteLater()
                     self.temp_combat_timer = None
@@ -507,7 +488,7 @@ class CombatSystem():
                 self.current_facing = lazer_dir
                 current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
                 self.window.move(current_x - offset_x + l_r_offset, current_y - offset_y)
-                if hasattr(self, 'pivot_images') and self.pivot_images:
+                if hasattr(self, "pivot_images") and self.pivot_images:
                     for img in self.pivot_images.values():
                         img.close() 
                     self.pivot_images.clear()

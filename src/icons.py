@@ -5,25 +5,30 @@ Manages desktop icon manipulation and throwing animations.
 Provides functionality to move desktop icons in trajectories
 with collision detection and hit registration.
 """
-import      math
-import      time
-import      threading
-import      pythoncom
-from        win32com.shell import shellcon  # type: ignore
-import      win32gui
-import      win32api
-from        constants import SharkoConstants
-from        windows_utils import WindowsUtils
-from boss_battle import CombatSystem
+
+import                      math
+import                      time
+
+import                      threading
+
+import                      pythoncom
+import                      win32api
+import                      win32gui
+from win32com.shell  import shellcon  # type: ignore
+
+from boss_battle     import CombatSystem
+from constants       import SharkoConstants
+from windows_utils   import WindowsUtils
 
 throw_lock = threading.Lock()
 
 
 class IconManager:
     """Manages desktop icon throwing and trajectory animation."""
+
     def _throw_worker(self, index, target_pos, speed_factor, name):
         """Worker thread for icon throwing animation with collision detection.
-        
+
         Args:
             index: Desktop icon index
             target_pos: Target (x, y) position
@@ -42,7 +47,7 @@ class IconManager:
                 SharkoConstants.CLSID_ShellWindows,
                 SharkoConstants.IID_IFolderView,
                 SharkoConstants.SWC_DESKTOP,
-                SharkoConstants.SWFO_NEEDDISPATCH
+                SharkoConstants.SWFO_NEEDDISPATCH,
             )
             item = None
             try:
@@ -66,13 +71,13 @@ class IconManager:
             spacing = win32gui.SendMessage(hwnd_lv, 0x1033, 0, 0)
             cell_h = (spacing >> 16) & 0xFFFF
 
-            end_x = mousex - cell_h ** 1.2 * 0.10
-            end_y = mousey - cell_h ** 1.2 * 0.10
+            end_x = mousex - cell_h**1.2 * 0.10
+            end_y = mousey - cell_h**1.2 * 0.10
 
             dx = end_x - x0
             dy = end_y - y0
-            over_x = x0 + dx * (1+(0.1/speed_factor))
-            over_y = y0 + dy * (1+(0.1/speed_factor))
+            over_x = x0 + dx * (1 + (0.1 / speed_factor))
+            over_y = y0 + dy * (1 + (0.1 / speed_factor))
 
             over_x = WindowsUtils.clamp(over_x, 0, screen_w - cell_h // 2)
             over_y = WindowsUtils.clamp(over_y, 0, screen_h - cell_h)
@@ -83,8 +88,8 @@ class IconManager:
             ctrl_x = (x0 + target_x) // 2
             ctrl_y = min(y0, over_y) - 300
 
-            steps = math.floor(250*speed_factor)
-            duration = 2.0*speed_factor
+            steps = math.floor(250 * speed_factor)
+            duration = 2.0 * speed_factor
             dt = duration / steps
             hit_registered = False
 
@@ -93,7 +98,7 @@ class IconManager:
                 if not WindowsUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
                     original_count = current_count
                     index = WindowsUtils.get_actual_index(hwnd_lv, item_name)
-                    if index == -1: 
+                    if index == -1:
                         with throw_lock:
                             self.thrown_icons.discard(name)
 
@@ -108,7 +113,7 @@ class IconManager:
 
                 mx, my = win32api.GetCursorPos()
 
-                if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
+                if not hit_registered and math.dist((x + cell_h // 2, y + cell_h // 2), (mx, my)) < cell_h // 2:
                     hit_registered = True
                     CombatSystem.damage(self)
 
@@ -126,14 +131,14 @@ class IconManager:
                 if not WindowsUtils.icon_exists(hwnd_lv, index) or current_count != original_count:
                     original_count = current_count
                     index = WindowsUtils.get_actual_index(hwnd_lv, item_name)
-                    if index == -1: 
+                    if index == -1:
                         with throw_lock:
                             self.thrown_icons.discard(name)
                         pythoncom.CoUninitialize()
                         return
 
-                t = (i / bob_steps)**0.8
-                if not hit_registered and math.dist((x+cell_h//2, y+cell_h//2), (mx, my)) < cell_h//2:
+                t = (i / bob_steps) ** 0.8
+                if not hit_registered and math.dist((x + cell_h // 2, y + cell_h // 2), (mx, my)) < cell_h // 2:
                     hit_registered = True
                     CombatSystem.damage(self)
                 fall = (1 - t) ** 2
@@ -156,11 +161,10 @@ class IconManager:
                 self.thrown_icons.discard(name)
             pythoncom.CoUninitialize()
 
-        
-    def throw_shortcut(self, index, target_pos,speed_factor,name):
+    def throw_shortcut(self, index, target_pos, speed_factor, name):
         thread = threading.Thread(
             target=self._throw_worker,
-            args=(index, target_pos,speed_factor,name),
+            args=(index, target_pos, speed_factor, name),
             daemon=True,
         )
         thread.start()
@@ -172,7 +176,7 @@ class IconManager:
                 SharkoConstants.CLSID_ShellWindows,
                 SharkoConstants.IID_IFolderView,
                 SharkoConstants.SWC_DESKTOP,
-                SharkoConstants.SWFO_NEEDDISPATCH
+                SharkoConstants.SWFO_NEEDDISPATCH,
             )
             mouse = win32api.GetCursorPos()
             items_len = folder_view.ItemCount(shellcon.SVGIO_ALLVIEW)
@@ -185,8 +189,7 @@ class IconManager:
                 dists.append((d, i))
 
             dists.sort()
-            return [idx for _, idx in dists[:n]],len(dists)
+            return [idx for _, idx in dists[:n]], len(dists)
 
         finally:
             pythoncom.CoUninitialize()
-

@@ -3,16 +3,16 @@ combat AI for Sharko.
 
 Main fight loop functionality and descision making.
 """
-import              random
 
-import              win32api
+import                         random
 
-from PyQt5.QtCore   import QTimer
+from PyQt5.QtCore       import QTimer
 
-from ctypes         import windll, wintypes, byref
+import                         win32api
+import                         win32gui
 
-from windows_utils  import WindowsUtils
-from boss_battle    import CombatSystem
+from windows_utils      import WindowsUtils
+from boss_battle        import CombatSystem
 
 
 class SharkoCombatAI:
@@ -20,9 +20,9 @@ class SharkoCombatAI:
     def __init__(self, sharko):
         self.sharko = sharko
         self.tier_1_attacks = [self._jump_and_attack]#[self._jump_and_attack, self._do_area_belly_flop]
-        self.tier_2_attacks = []#[self._do_laser]
+        self.tier_2_attacks = []  # [self._do_laser]
         self.tier_3_attacks = []
-        self.all_attacks = self.tier_1_attacks+self.tier_2_attacks+self.tier_3_attacks
+        self.all_attacks = (self.tier_1_attacks + self.tier_2_attacks + self.tier_3_attacks)
 
     def choose_and_execute_action(self):
 
@@ -57,12 +57,14 @@ class SharkoCombatAI:
             current_frame += 1
             # Alternate idle frames
             from img_utils import ImgUtils
+
             if current_frame % 2 == 0:
-                photo_image = sharko.states['idle'][0]()
+                photo_image = sharko.states["idle"][0]()
             else:
-                photo_image = sharko.states['idle'][1]()
+                photo_image = sharko.states["idle"][1]()
 
             from PIL import Image
+
             if sharko.current_facing == "Left":
                 photo_image = photo_image.transpose(Image.FLIP_LEFT_RIGHT)
             sharko.label.setPixmap(ImgUtils._pil_to_qpixmap(photo_image))
@@ -75,11 +77,12 @@ class SharkoCombatAI:
                 sharko.fight_loop_timer = None
             sharko.fight_loop_timer = sharko._add_timer(QTimer())
             sharko.fight_loop_timer.setSingleShot(True)
-            sharko.fight_loop_timer.timeout.connect(lambda: play_idle_frame(current_frame))
+            sharko.fight_loop_timer.timeout.connect(
+                lambda: play_idle_frame(current_frame)
+            )
             sharko.fight_loop_timer.start(sharko.ANIMATION_DELAY)
 
         play_idle_frame(current_idle_frame)
-
 
     def _do_area_belly_flop(self):
         sharko = self.sharko
@@ -90,18 +93,18 @@ class SharkoCombatAI:
 
         work_area_height = WindowsUtils.get_work_area_height()
 
-        CombatSystem.area_belly_flop(sharko,
+        CombatSystem.area_belly_flop(
+            sharko,
             warning_time_ms,
             num_subdivisions,
             num_lethal,
             work_area_height,
-            on_complete=self._inter_attack_idle
+            on_complete=self._inter_attack_idle,
         )
-
 
     def _do_laser(self):
         duration_ms = 1600
-        CombatSystem.lazer(self.sharko,duration_ms,on_complete=self._inter_attack_idle)
+        CombatSystem.lazer(self.sharko, duration_ms, on_complete=self._inter_attack_idle)
 
     def _do_sword_poke(self):
         CombatSystem.sword_combo(self.sharko, num_attacks=1)
@@ -116,7 +119,7 @@ class SharkoCombatAI:
             sharko.CLSID_ShellWindows,
             sharko.IID_IFolderView,
             sharko.SWC_DESKTOP,
-            sharko.SWFO_NEEDDISPATCH
+            sharko.SWFO_NEEDDISPATCH,
         )
         closest, num_icons = sharko.get_closest_icons(1)
         screen_w = win32api.GetSystemMetrics(0)
@@ -131,11 +134,10 @@ class SharkoCombatAI:
             y = random.randint(350, work_area_height - 350)
 
             pos = win32api.MAKELONG(x, y)
-            import win32gui
+
             win32gui.SendMessage(hwnd_lv, sharko.LVM_SETITEMPOSITION, replacement_shortcut, pos)
 
         item = folder_view.Item(closest[0])
         item_pos = folder_view.GetItemPosition(item)
 
         CombatSystem.jump_and_hit(sharko, item_pos, closest[0], 0.4, on_complete=self._inter_attack_idle)
-        

@@ -13,9 +13,9 @@ def _decode_escapes(s):
     """Decode escape sequences and HTML entities in strings"""
     if not isinstance(s, str):
         return s
-    if ('\\u' in s) or ('\\x' in s) or ('\\U' in s) or ('&#' in s) or ('&' in s):
+    if ("\\u" in s) or ("\\x" in s) or ("\\U" in s) or ("&#" in s) or ("&" in s):
         try:
-            decoded = s.encode('utf-8').decode('unicode_escape')
+            decoded = s.encode("utf-8").decode("unicode_escape")
         except Exception:
             decoded = s
         try:
@@ -28,6 +28,9 @@ def _decode_escapes(s):
 
 class SharkoConstants:
     """Global constants and configuration for the Sharko game."""
+
+    #Debug Mode Flag - todo: visualizes ram and cpu over time in seperate window + currently alive large objects, Catch the tiny memory leaks.
+    DEBUG = False
     
     # Animation/timing
     FADE_STEP                   = 1
@@ -69,11 +72,16 @@ class SharkoConstants:
     GREETING_SOUND              = "assets/sounds/greeting.mp3"
     ANSWER_SOUND                = "assets/sounds/answer_question.mp3"
     
-    # Fight SFX sounds
+    # Combat sfx
     BLOCK_ATTEMPT_SOUND         = "assets/sounds/fight-sfx/Block_Attempt.mp3"
     PARRY_SOUND                 = "assets/sounds/fight-sfx/Parry.mp3"
     BLOCK_SOUND                 = "assets/sounds/fight-sfx/Block.mp3"
     HIT_SOUND                   = "assets/sounds/fight-sfx/Hit.mp3"
+
+    # fight sfx
+    ROAR_SOUND_1                = "assets/sounds/fight-sfx/Roar1.mp3"
+    ROAR_SOUND_2                = "assets/sounds/fight-sfx/Roar2.mp3"
+    DREAD_BREATH_SOUND          = "assets/sounds/fight-sfx/Breath.mp3"
 
     # Fight constants
     MAX_HEALTH                  = 2000
@@ -100,6 +108,7 @@ class SharkoConstants:
     LVM_FIRST               = 0x1000
     LVM_GETEXTENDEDLISTVIEWSTYLE = LVM_FIRST + 55
     LVM_SETEXTENDEDLISTVIEWSTYLE = LVM_FIRST + 54
+    SUPRESS_DESKTOP_MENU_TIMER_ID = 1
     
     # Movement & Physics
     WALKSPEED = 230  # Pixels per second
@@ -130,13 +139,13 @@ class SharkoConstants:
 
 
     try:
-        file = open('Lines.txt', 'r', encoding='utf-8')
+        file = open("Lines.txt", "r", encoding="utf-8")
         Lines = file.readlines()
         clean_lines = [_decode_escapes(line.strip()) for line in Lines]
         Lines = clean_lines
     except Exception:
         try:
-            file = open('Lines.txt', 'r')
+            file = open("Lines.txt", "r")
             Lines = [line.strip() for line in file.readlines()]
         except Exception:
             Lines = []
@@ -145,7 +154,7 @@ class SharkoConstants:
             file.close()
         except Exception:
             pass
-    file = open('removal_lines+intro_line.txt', 'r', encoding='utf-8')
+    file = open("removal_lines+intro_line.txt", "r", encoding="utf-8")
     removal_intro_lines = file.readlines()
     removal_lines = []
 
@@ -157,7 +166,7 @@ class SharkoConstants:
             intro_line = decoded
     file.close()
 
-    file = open('Questions.txt', 'r', encoding='utf-8')
+    file = open("Questions.txt", "r", encoding="utf-8")
     question_lines = file.readlines()
     Questions = []
     for index, line in enumerate(question_lines):
