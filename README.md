@@ -7,7 +7,7 @@
 - **Code Organization**: Code has been split into multiple files, and a singlular type convention has been applied. I've also organized a bunch. There's still a little bit of work that needs to be done though
 - **New boss fight**: New boss fight that can be acessed with the fight option, so far there has been: A boss bar, jump attack, jump and hit desktop shortcut at mouse, and lazer attack added.
 - **General improvements**: Made improvements such as making the death animation particles not be cut off and optimizing some parts of code.
-- **Migrated to PyQt5**: Previously this was a Tkinter application, now it's 100% PyQt5, which means it's more optimizaed and it has a cooler, customized menu system.
+- **Migrated to PyQt5**: Previously this was a Tkinter application, now it's 100% PyQt5, which means it's more optimized and it has a cooler, customized menu system.
 
 ### ToDo here in Experimental content before we can merge to main:
 - **Zero memory leaks**: I have fixed all memory leaks save for one where if fight mode is repeadedly toggled, it accumulates.
