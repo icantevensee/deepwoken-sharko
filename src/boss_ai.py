@@ -19,8 +19,8 @@ class SharkoCombatAI:
 
     def __init__(self, sharko):
         self.sharko = sharko
-        self.tier_1_attacks = [self._jump_and_attack]#[self._jump_and_attack, self._do_area_belly_flop]
-        self.tier_2_attacks = []  # [self._do_laser]
+        self.tier_1_attacks = [self._jump_and_attack, self._do_area_belly_flop]
+        self.tier_2_attacks = [self._toast_attack, self._do_laser]
         self.tier_3_attacks = []
         self.all_attacks = (self.tier_1_attacks + self.tier_2_attacks + self.tier_3_attacks)
 
@@ -105,6 +105,9 @@ class SharkoCombatAI:
     def _do_laser(self):
         duration_ms = 1600
         CombatSystem.lazer(self.sharko, duration_ms, on_complete=self._inter_attack_idle)
+
+    def _toast_attack(self):
+        CombatSystem.toast_attack(self.sharko, on_complete=self._inter_attack_idle)
 
     def _do_sword_poke(self):
         CombatSystem.sword_combo(self.sharko, num_attacks=1)

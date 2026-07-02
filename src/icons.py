@@ -169,7 +169,8 @@ class IconManager:
         )
         thread.start()
 
-    def get_closest_icons(self, n):
+    @staticmethod
+    def get_closest_icons(n):
         pythoncom.CoInitialize()
         try:
             folder_view, _ = WindowsUtils.get_desktop_interfaces(

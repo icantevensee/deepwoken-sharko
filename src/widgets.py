@@ -13,6 +13,8 @@ import os
 import sys
 import time
 
+import ctypes
+
 from PyQt5.QtCore import QEvent, QFileInfo, QPoint, QRect, Qt, QTimer, pyqtSignal,QSize
 from PyQt5.QtGui import QColor, QCursor, QFont, QPainter, QPalette, QPen, QTextCursor
 from PyQt5.QtWidgets import (
@@ -340,7 +342,7 @@ class SwordWindow(QWidget):
         self.y = self.appear_start_y
         self.is_appearing = True
         self.appear_progress = 0.0
-        self.showFullScreen()
+        self.setGeometry(0, 0, ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1))
         self.timer.start(16)
 
     def set_follow_mode(self, mode="mouse", window=None):

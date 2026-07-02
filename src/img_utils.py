@@ -113,3 +113,19 @@ class ImgUtils:
         y = self.QUESTION_BOX_TOP_Y
         b.paste(text_img, (x, y), text_img)
         return b
+    
+    @staticmethod
+    def _remove_black_background(img):
+        rgba_img = img.convert("RGBA")
+        pixel_data = rgba_img.getdata()
+
+        cleaned_pixels = []
+        for pixel in pixel_data:
+            r, g, b, a = pixel
+            if r <= 15 and g <= 15 and b <= 15:
+                cleaned_pixels.append((0, 0, 0, 0))
+            else:
+                cleaned_pixels.append((r, g, b, 255))
+
+        rgba_img.putdata(cleaned_pixels)
+        return rgba_img

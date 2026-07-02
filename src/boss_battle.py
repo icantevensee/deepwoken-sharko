@@ -145,10 +145,10 @@ class CombatSystem():
             offset = self.WINDOW_SIZE_X//2
             end_x = end_x - offset
         
-        dist                = math.sqrt((end_x-start_x)**2+(end_y-start_y)**2)
+        dist                = math.hypot(end_x - start_x, end_y - start_y)
         screen_height       = windll.user32.GetSystemMetrics(1)
         screen_width        = windll.user32.GetSystemMetrics(0)
-        screen_diagonal     = math.sqrt(screen_height**2+screen_width**2)
+        screen_diagonal     = math.hypot(screen_width, screen_height)
         peak_x, peak_y      = (start_x+end_x)/2, (start_y+end_y)/2-screen_height*((dist/screen_diagonal)*0.7)
         peak_x = peak_x-84 if end_x - start_x > 0 else peak_x-266
 
@@ -569,6 +569,11 @@ class CombatSystem():
                 )
             )
         )
+
+    def toast_attack(self, on_complete=None):
+        self.toast_manager.trigger_toast_async("Sharko Toast", "Sharko is attacking!")
+        if on_complete: on_complete()
+
 
     def summon_sword(self):
         if hasattr(self, "sword_window") and self.sword_window:

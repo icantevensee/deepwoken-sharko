@@ -39,6 +39,7 @@ from boss_ai            import SharkoCombatAI
 
 from constants          import SharkoConstants
 from icons              import IconManager
+from toasts             import ToastManager
 from windows_utils      import WindowsUtils
 from tile               import Tile
 
@@ -921,6 +922,7 @@ class Sharko(SharkoConstants, IconManager):
             self.bar_guis.slide_in()
             self.warning_manager = MultiWarningOverlay()
             self.screen_shaker = ScreenShaker()
+            self.toast_manager = ToastManager(damage_callback=lambda: CombatSystem.damage(self))
             self.particles_manager = VFXManager(damage_callback=lambda: CombatSystem.damage(self),screen_shaker = self.screen_shaker)
             self.screen_shaker.particles_manager = self.particles_manager
             self.combat_ai = SharkoCombatAI(self)
@@ -956,6 +958,9 @@ class Sharko(SharkoConstants, IconManager):
             if hasattr(self, "screen_shaker") and self.screen_shaker:
                 self.screen_shaker.deinitialize()
                 self.screen_shaker = None
+            if hasattr(self, "toast_manager") and self.toast_manager:
+                self.toast_manager.deinitialize()
+                self.toast_manager = None
             if self.bar_guis:
                 self.bar_guis.slide_out_to_hide()
             if hasattr(self, "particles_manager") and self.particles_manager:

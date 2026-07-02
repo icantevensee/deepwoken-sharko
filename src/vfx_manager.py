@@ -258,7 +258,8 @@ class VFXManager(QWidget):
         user32.SetWindowDisplayAffinity(int(self.winId()), SharkoConstants.WDA_EXCLUDEFROMCAPTURE)
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self._load_assets()
-        self.showFullScreen()
+        self.setGeometry(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)-1)
+        self.show()
         self.raise_()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_vfx)
@@ -547,7 +548,8 @@ class MultiWarningOverlay(QWidget):
             | Qt.Tool
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.showFullScreen()
+        self.setGeometry(0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)-1)
+        self.show()
 
         self.active_warnings = []
 
