@@ -32,17 +32,7 @@ from PyQt5.QtWidgets import QWidget
 
 from constants import SharkoConstants
 
-# --- PATHS ---
-PARRY_IMAGES = [
-    "assets/particlesUI/sparkle2.png",
-    "assets/particlesUI/spark.png",
-    "assets/particlesUI/ring.png",
-]
 # Ensure these files exist in your project folder
-BAR_IMG_PATH = "assets/UI/boss_bar_border.png"
-MARKER_PATH = "assets/UI/boss_bar_pins.png"
-CENTER_ICON_PATH = "assets/UI/boss_bar_skull.png"
-FONT_PATH = "assets/fonts/Boss_Font.otf"
 
 
 class ScalableHealthBar(QWidget):
@@ -79,11 +69,11 @@ class ScalableHealthBar(QWidget):
             painter.end()
 
         barcolor = QColor(230, 191, 124)
-        self.bar_img = QPixmap(BAR_IMG_PATH)
+        self.bar_img = QPixmap(SharkoConstants.BAR_IMG_PATH)
         tint_pixmap(self.bar_img, barcolor)
-        self.marker_img = QPixmap(MARKER_PATH)
+        self.marker_img = QPixmap(SharkoConstants.MARKER_PATH)
         tint_pixmap(self.marker_img, barcolor)
-        self.icon_img = QPixmap(CENTER_ICON_PATH)
+        self.icon_img = QPixmap(SharkoConstants.CENTER_ICON_PATH)
         self.original_crop_border = 16
         self.percentage = 1.0
         self.current_percentage = 1.0
@@ -99,7 +89,7 @@ class ScalableHealthBar(QWidget):
         self._pos_animation.setEasingCurve(QEasingCurve.OutCubic)
 
         # 5. Font Setup
-        font_id = QFontDatabase.addApplicationFont(FONT_PATH)
+        font_id = QFontDatabase.addApplicationFont(SharkoConstants.BOSS_FONT)
         if font_id != -1:
             family = QFontDatabase.applicationFontFamilies(font_id)[0]
             self.custom_font = QFont(family, 22)

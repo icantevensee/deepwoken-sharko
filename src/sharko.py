@@ -221,28 +221,9 @@ class Sharko(SharkoConstants, IconManager):
         self.input_emitter.f_pressed.connect(self._on_f_pressed_safe, Qt.QueuedConnection)
         self.input_emitter.f_released.connect(self._on_f_released_safe, Qt.QueuedConnection)
         self.input_emitter.action_triggered.connect(self._on_action_safe, Qt.QueuedConnection)
-        
-        #INPUT LISTENERS
-        def on_f_press(key):
-            if getattr(key, "char", None) == "f":
-                self.input_emitter.f_pressed.emit()
 
-        def on_f_release(key):
-            if getattr(key, "char", None) == "f":
-                self.input_emitter.f_released.emit()
-
-        
-        def on_mouse_click(x, y, button, pressed):
-            if button == mouse.Button.right and self.suppress_right_click and WindowsUtils.should_supress_click():
-                mouse.Listener.suppress_event(self)
-            if pressed:
-                self.input_emitter.action_triggered.emit(x, y, button)
-        
-        self.keyboard_listener   = keyboard.Listener(on_press=on_f_press, on_release=on_f_release)
-        self.mouse_listener      = mouse.Listener(on_click=on_mouse_click)
-
-        self.keyboard_listener.start()
-        self.mouse_listener.start()
+        self.keyboard_listener = None
+        self.mouse_listener = None
 
         sys.exit(self.app.exec_())
 
@@ -310,9 +291,9 @@ class Sharko(SharkoConstants, IconManager):
         
         # Create context menu
         self.menu = QMenu(self.window)
-        self.Movie_menu = QMenu("Movie mode", self.window)
+        self.Movie_menu = QMenu("Do not disturb", self.window) # internally known as movie mode
         self.Movie_menu.addAction("Off", self.movie_off)
-        self.Movie_menu.addAction("On(Glasses)", self.movie_on_g)
+        self.Movie_menu.addAction("On(Movie glasses)", self.movie_on_g)
         self.Movie_menu.addAction("On(No glasses)", self.movie_on_ng)
         self.menu.addMenu(self.Movie_menu)
         self.menu.addAction("Fight", self.toggle_fight_mode)
@@ -653,6 +634,39 @@ class Sharko(SharkoConstants, IconManager):
                     self.attack_active_until = self.attack_press_time + self.PARRY_WINDOW
                     CombatSystem.mouse_attack(self,x,y)
 
+    def _on_f_press(self, key):
+        if getattr(key, "char", None) == "f" and self.fight_mode_active:
+            self.input_emitter.f_pressed.emit()
+
+    def _on_f_release(self, key):
+        if getattr(key, "char", None) == "f" and self.fight_mode_active:
+            self.input_emitter.f_released.emit()
+
+    def _on_mouse_click(self, x, y, button, pressed):
+        if button == mouse.Button.right and self.suppress_right_click and WindowsUtils.should_supress_click():
+            mouse.Listener.suppress_event(self)
+        if pressed:
+            self.input_emitter.action_triggered.emit(x, y, button)
+
+    def _start_input_listeners(self):
+        if self.keyboard_listener is None:
+            self.keyboard_listener = keyboard.Listener(on_press=self._on_f_press, on_release=self._on_f_release)
+        if self.mouse_listener is None:
+            self.mouse_listener = mouse.Listener(on_click=self._on_mouse_click)
+
+        self.keyboard_listener.start()
+        self.mouse_listener.start()
+
+    def _stop_input_listeners(self):
+        for listener in (self.keyboard_listener, self.mouse_listener):
+            if listener:
+                try:
+                    listener.stop()
+                except Exception:
+                    pass
+        self.keyboard_listener = None
+        self.mouse_listener = None
+
     def talking_state(self):
         if self.current_state == "idle":
             line_text = random.choice(self.Lines + self.Questions)
@@ -868,7 +882,7 @@ class Sharko(SharkoConstants, IconManager):
                     for x in range(0, self.img_w, TILE_SIZE):
                         tile_img = src.copy(x, y, TILE_SIZE, TILE_SIZE)
                         if tile_img.hasAlphaChannel():
-                            self.tiles.append(Tile(QPixmap.fromImage(tile_img), x+50, y))
+                            self.tiles.append(Tile(QPixmap.fromImage(tile_img), x+50, y, SharkoConstants.FADE_STEP))
 
             def animate(self):
                 for tile in self.tiles:
@@ -916,6 +930,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.animation_timer.stop()
                 self.animation_timer.deleteLater()
                 self.animation_timer = None
+
             self.bar_guis = ScalableHealthBar()
             screen_w = windll.user32.GetSystemMetrics(0)
             self.bar_guis.resize(screen_w // 2, 200)
@@ -928,12 +943,15 @@ class Sharko(SharkoConstants, IconManager):
             self.combat_ai = SharkoCombatAI(self)
             WindowsUtils.disable_desktop_grid_and_autoarrange_universal()
 
+            self._start_input_listeners()
+
             self.new_state("fight")
             self.fight_loop()
         else:
             self.fight_mode_active = False
             self.suppress_right_click = False
             blocker_keyboard.remove_hotkey('shift+f10')
+            self._stop_input_listeners()
             self.animation_timer = QTimer()
             self.animation_timer.timeout.connect(self.animate)
             self.animation_timer.start(self.ANIMATION_DELAY)

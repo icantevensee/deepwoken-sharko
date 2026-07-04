@@ -60,7 +60,6 @@ class SharkoConstants:
     BAR_IMG_PATH                = "assets/UI/boss_bar_border.png"
     MARKER_PATH                 = "assets/UI/boss_bar_pins.png"
     CENTER_ICON_PATH            = "assets/UI/boss_bar_skull.png"
-    FONT_PATH                   = "assets/fonts/Boss_Font.otf"
     TALKING_SENTENCES_PATH      = "assets/sentences/talking/"
     GREETING_SENTENCES_PATH     = "assets/sentences/greeting/"
     REMOVAL_SENTENCES_PATH      = "assets/sentences/removal/"
@@ -88,7 +87,8 @@ class SharkoConstants:
     M1_DAMAGE                   = 30
 
     # Fonts
-    FONT = r"assets/fonts/TheFont.ttf"
+    FONT                        = r"assets/fonts/TheFont.ttf" #Pillow format
+    BOSS_FONT                   = "assets/fonts/Boss_Font.otf" #PyQ5 format
     
     # COM interfaces
     CLSID_ShellWindows      = "{9BA05972-F6A8-11CF-A442-00A0C90A8F39}"
@@ -113,9 +113,6 @@ class SharkoConstants:
     
     # Movement & Physics
     WALKSPEED = 230  # Pixels per second
-    
-    # Audio
-    MIN_VOLUME = 0.1
     
     # Combat Mechanics
     PARRY_WINDOW            = 0.3  # seconds

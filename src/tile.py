@@ -4,21 +4,12 @@ Tile class for visual effects and particles
 
 import random
 
-
 class Tile:
     """Represents a tile/particle for visual effects"""
-
-    FADE_STEP = 1  # Can be overridden
 
     def __init__(self, img, x, y, fade_step=1):
         """
         Initialize a tile sprite.
-
-        Args:
-            img: Image object
-            x: X position
-            y: Y position
-            fade_step: How much to fade per update
         """
         self.img       = img
         self.x         = x

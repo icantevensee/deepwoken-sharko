@@ -2,14 +2,13 @@ import                          math
 import                          random
 import                          time
 
-import                          sys
-import                          platform
 import                          threading
 
 import                          ctypes
 
 import                          win32api
 import                          win32gui
+import                          win32con
 import                          win32ui
 import                          winsound
 from winrt.windows.ui.notifications import ToastNotificationManager
@@ -18,21 +17,15 @@ from PIL                import Image
 from PyQt5.QtCore       import Qt, QTimer, QObject, pyqtSignal
 from PyQt5.QtGui        import QImage, QPixmap
 from PyQt5.QtWidgets    import QLabel
-sys.coinit_flags = 2 #Get the COM threading right for pywinauto so it doesn't clash with PyQt5
-from pywinauto          import Application
+
+import uiautomation         as auto
 from win11toast         import toast
 
 from constants          import SharkoConstants
 from img_utils          import ImgUtils
 
-try:
-    ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
-except Exception:
-    pass
-
-
 class ToastBridge(QObject):
-    toast_captured = pyqtSignal(bytes, int, int, int, int)
+    toast_captured = pyqtSignal(bytes, int, int, int, int, str)  # rgba_bytes, width, height, x, y, target_aumid
 
 
 class ToastManager:
@@ -45,29 +38,54 @@ class ToastManager:
         self._is_deinitialized = False
 
     @staticmethod
-    def _capture_window(hwnd):
+    def _capture_window(hwnd, capture_full_window=True):
         rect = win32gui.GetWindowRect(hwnd)
         x1, y1, x2, y2 = rect
         w, h = x2 - x1, y2 - y1
 
-        hwnd_dc = win32gui.GetWindowDC(hwnd)
-        mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
-        save_dc = mfc_dc.CreateCompatibleDC()
+        if capture_full_window:
+            hwnd_dc = win32gui.GetWindowDC(hwnd)
+            mfc_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+            save_dc = mfc_dc.CreateCompatibleDC()
 
-        bitmap = win32ui.CreateBitmap()
-        bitmap.CreateCompatibleBitmap(mfc_dc, w, h)
-        save_dc.SelectObject(bitmap)
+            bitmap = win32ui.CreateBitmap()
+            bitmap.CreateCompatibleBitmap(mfc_dc, w, h)
+            save_dc.SelectObject(bitmap)
+            
+            ctypes.windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
+            
+            # Extract bits while DCs are active
+            bmpinfo = bitmap.GetInfo()
+            bmpstr = bitmap.GetBitmapBits(True)
+            img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
 
-        ctypes.windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
+            # CLEANUP PATH A: Delete memory DCs first, then release window DC
+            win32gui.DeleteObject(bitmap.GetHandle())
+            save_dc.DeleteDC()
+            mfc_dc.DeleteDC()
+            win32gui.ReleaseDC(hwnd, hwnd_dc)
+        else:
+            h_desktop = win32gui.GetDesktopWindow()
+            desktop_dc = win32gui.GetWindowDC(h_desktop)
+            mfc_dc = win32ui.CreateDCFromHandle(desktop_dc)
+            save_dc = mfc_dc.CreateCompatibleDC()
 
-        bmpinfo = bitmap.GetInfo()
-        bmpstr = bitmap.GetBitmapBits(True)
-        img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
+            bitmap = win32ui.CreateBitmap()
+            bitmap.CreateCompatibleBitmap(mfc_dc, w, h)
+            save_dc.SelectObject(bitmap)
 
-        win32gui.DeleteObject(bitmap.GetHandle())
-        save_dc.DeleteDC()
-        mfc_dc.DeleteDC()
-        win32gui.ReleaseDC(hwnd, hwnd_dc)
+            save_dc.BitBlt((0, 0), (w, h), mfc_dc, (x1, y1), win32con.SRCCOPY)
+            
+            # Extract bits while DCs are active
+            bmpinfo = bitmap.GetInfo()
+            bmpstr = bitmap.GetBitmapBits(True)
+            img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
+
+            # CLEANUP PATH B: Delete memory DCs first, then release desktop DC
+            win32gui.DeleteObject(bitmap.GetHandle())
+            save_dc.DeleteDC()
+            mfc_dc.DeleteDC()
+            win32gui.ReleaseDC(h_desktop, desktop_dc)
 
         return img, x1, y1
 
@@ -78,10 +96,7 @@ class ToastManager:
         ctypes.windll.ole32.CoInitializeEx(None, SharkoConstants.COINIT_APARTMENTTHREADED)
 
         try:
-            if platform.release() == "11":
-                TARGET_AUMID = "Microsoft.Windows.Accessibility.Utilities"
-            else:
-                TARGET_AUMID = "Windows.SystemToast.Background"
+            TARGET_AUMID = "Microsoft.Windows.Accessibility.Utilities"
             history_manager = ToastNotificationManager.history
             history_manager.clear_with_id(TARGET_AUMID)
 
@@ -93,7 +108,8 @@ class ToastManager:
                 app_id=TARGET_AUMID,
                 scenario='incomingCall',
                 duration='short',
-                audio={'silent': 'true'}
+                audio={'silent': 'true'}, 
+                tag=str(int(time.time()*10))
             ), daemon=True)
             toast_thread.start()
 
@@ -103,57 +119,70 @@ class ToastManager:
             toast_hwnd = None
             target_crop_bounds = None
 
-            app = Application(backend="uia").connect(path="ShellExperienceHost.exe")
-            for window in app.windows():
-                if window.is_visible() and window.element_info.class_name == "Windows.UI.Core.CoreWindow":
-                    toast_hwnd = window.handle
-                    all_descendants = window.descendants()
-                    for el in all_descendants:
+            root = auto.GetRootControl()
+            for win in root.GetChildren():
+                if win.ClassName == 'Windows.UI.Core.CoreWindow':
+                    toast_hwnd = win.NativeWindowHandle
+                    for el, depth in auto.WalkControl(win, includeTop=False):
                         try:
-                            if title in str(el.window_text()):
+                            if title in str(el.Name):
                                 current = el
                                 for _ in range(5):
-                                    parent = current.parent()
-                                    if parent and (300 < parent.rectangle().width() < 500):
-                                        target_crop_bounds = parent.rectangle()
-                                        break
+                                    parent = current.GetParentControl()
+                                    if parent:
+                                        rect = parent.BoundingRectangle
+                                        width = rect.right - rect.left
+                                        if 300 < width < 500:
+                                            target_crop_bounds = rect
+                                            break
                                     current = parent
                                 break
                         except Exception:
-                            print("ggg")
                             pass
                     if target_crop_bounds:
                         break
 
             if not toast_hwnd or not target_crop_bounds:
-                print("ggg")
                 history_manager.clear_with_id(TARGET_AUMID)
                 return
 
-            full_stack_img, win_x1, win_y1 = self._capture_window(toast_hwnd)
-
+            full_stack_img, win_x1, win_y1 = self._capture_window(toast_hwnd, False)
+            full_stack_img2, win_x1, win_y1 = self._capture_window(toast_hwnd, True)
             local_x1 = max(0, target_crop_bounds.left - win_x1)
             local_y1 = max(0, target_crop_bounds.top - win_y1)
             local_x2 = min(full_stack_img.width, local_x1 + target_crop_bounds.width())
             local_y2 = min(full_stack_img.height, local_y1 + target_crop_bounds.height())
 
             cropped_img = full_stack_img.crop((local_x1, local_y1, local_x2, local_y2))
+            cropped_img2 = full_stack_img2.crop((local_x1, local_y1, local_x2, local_y2))
+            full_stack_img.close()
+            full_stack_img2.close()
             w_final, h_final = cropped_img.size
 
-            transparent_img = ImgUtils._remove_black_background(cropped_img)
-            rgba_bytes = transparent_img.tobytes("raw", "RGBA")
+            transparent_img = ImgUtils._remove_black_background(cropped_img2)
+            cropped_img2.close()
+            alpha_mask = transparent_img.split()[3]
+
+            final_masked_img = cropped_img.copy()
+            final_masked_img.putalpha(alpha_mask)
+            cropped_img.close()
+            alpha_mask.close()
+            transparent_img.close()
+
+            rgba_bytes = final_masked_img.tobytes("raw", "RGBA")
+            final_masked_img.close()
 
             default_x = target_crop_bounds.left
             default_y = target_crop_bounds.top
 
-            history_manager.clear_with_id(TARGET_AUMID)
+
 
             if self.bridge is not None:
-                self.bridge.toast_captured.emit(rgba_bytes, w_final, h_final, default_x, default_y)
+                self.bridge.toast_captured.emit(rgba_bytes, w_final, h_final, default_x, default_y, TARGET_AUMID)
         finally:
             ctypes.windll.ole32.CoUninitialize()
 
-    def on_toast_data_received(self, rgba_bytes, w, h, x, y):
+    def on_toast_data_received(self, rgba_bytes, w, h, x, y, target_aumid):
         """Triggered on the main thread when a background worker finishes cloning."""
         q_img = QImage(rgba_bytes, w, h, QImage.Format_RGBA8888)
         pixmap = QPixmap.fromImage(q_img)
@@ -166,7 +195,7 @@ class ToastManager:
         toast_window.show()
 
         self.active_toasts.append(toast_window)
-
+        QTimer.singleShot(10, lambda: ToastNotificationManager.history.clear_with_id(target_aumid)) #wait 1 qt refresh frame before clearing the real notification
         self.start_constant_speed_trajectory(toast_window, x, y, w, h)
 
     def start_constant_speed_trajectory(self, window_handle, start_x, start_y, w, h):
@@ -213,7 +242,6 @@ class ToastManager:
             "drift_x": 0.0,
             "drift_y": 0.0,
         }
-
         self.animate_constant_speed_frame(window_handle, toast_states, w, h)
 
     def animate_constant_speed_frame(self, window_handle, toast_states, w, h):
@@ -283,7 +311,6 @@ class ToastManager:
         QTimer.singleShot(10, lambda: self.animate_constant_speed_frame(window_handle, toast_states, w, h))
 
     def cleanup_toast(self, window_handle):
-        print("gg")
         """Safely removes the window from UI memory to allow garbage collection."""
         if window_handle in self.active_toasts:
             self.active_toasts.remove(window_handle)

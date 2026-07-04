@@ -11,10 +11,10 @@ import      os
 import                     win32api
 import                     win32gui
 
-from ctypes         import windll, wintypes, byref
+from ctypes         import windll
 from PIL            import Image
-from PyQt5.QtGui    import QPixmap, QImage, QCursor
-from PyQt5.QtCore   import Qt, QTimer, QPoint
+from PyQt5.QtGui    import QPixmap
+from PyQt5.QtCore   import QTimer
 
 from math_utils     import MathUtils
 from img_utils      import ImgUtils

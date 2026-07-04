@@ -12,6 +12,7 @@ import math
 import os
 import random
 import time
+import sys
 from ctypes import c_bool, c_uint32, c_void_p, windll
 
 import win32api
@@ -256,7 +257,10 @@ class VFXManager(QWidget):
         user32.SetWindowDisplayAffinity.argtypes = [c_void_p, c_uint32]
         user32.SetWindowDisplayAffinity.restype = c_bool
         user32.SetWindowDisplayAffinity(int(self.winId()), SharkoConstants.WDA_EXCLUDEFROMCAPTURE)
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        if getattr(sys, 'frozen', False):
+            self.script_dir = os.path.join(os.path.dirname(sys.executable), 'src')
+        else:
+            self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self._load_assets()
         self.setGeometry(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)-1)
         self.show()
