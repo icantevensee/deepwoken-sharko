@@ -3,7 +3,7 @@ Utilities for image manipulation, including text rendering and format conversion
 """
 
 from PIL import         Image, ImageDraw, ImageFont
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QImage, QPixmap, QPainter
 
 
 class ImgUtils:
@@ -83,17 +83,6 @@ class ImgUtils:
         return QPixmap.fromImage(qimg)
 
     @staticmethod
-    def _flip_photoimage(pil_image):
-        """Flip PIL image horizontally."""
-        try:
-            if isinstance(pil_image, Image.Image):
-                return pil_image.transpose(Image.FLIP_LEFT_RIGHT)
-            return pil_image
-        except Exception as e:
-            print(f"Error flipping image: {e}")
-            return pil_image
-
-    @staticmethod
     def _flip_image(pil_image):
         """Flip PIL image horizontally and convert to QImage."""
         flipped = pil_image.transpose(Image.FLIP_LEFT_RIGHT)
@@ -102,7 +91,7 @@ class ImgUtils:
             return QImage(data, flipped.width, flipped.height, QImage.Format_RGBA8888)
         else:
             data = flipped.tobytes("raw", "RGB")
-            return QImage(data, flipped.width, flipped.height, QImage.Format_RGB888)
+            return QImage(data, flipped.width, flipped.height, QImage.Format_RGBA8888)
 
     def composite_on_base(self, base_img, text_img):
         b = base_img.copy()
@@ -113,7 +102,17 @@ class ImgUtils:
         y = self.QUESTION_BOX_TOP_Y
         b.paste(text_img, (x, y), text_img)
         return b
-    
+        
+    @staticmethod
+    def tint_pixmap(pixmap, color):
+        painter = QPainter(pixmap)
+        original = QPixmap(pixmap)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
+        painter.fillRect(pixmap.rect(), color)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+        painter.drawPixmap(0, 0, original)
+        painter.end()
+
     @staticmethod
     def _remove_black_background(img):
         rgba_img = img.convert("RGBA")

@@ -40,7 +40,7 @@ class SharkoConstants:
     GREETING_ANIMATION_DELAY    = 8000
     REMOVAL_ANIMATION_DELAY     = 3800
     INACTIVE_TIME_REQUIREMENT   = 60000
-    INTER_ATTACK_IDLE_TIME      = 5000
+    INTER_ATTACK_IDLE_TIME      = 1000
     
     # Window
     WINDOW_SIZE_X               = 357
@@ -53,16 +53,25 @@ class SharkoConstants:
     TEXT_OFFSET_RIGHT           = 9
 
     
-    # Paths
-    ASSETS_PATH                 = "assets/"
+    # General paths
     CURRENT_IMAGES_PATH         = "assets/sharko/"
     IMAGES_PATH                 = "assets/sharko/"
-    BAR_IMG_PATH                = "assets/UI/boss_bar_border.png"
-    MARKER_PATH                 = "assets/UI/boss_bar_pins.png"
-    CENTER_ICON_PATH            = "assets/UI/boss_bar_skull.png"
     TALKING_SENTENCES_PATH      = "assets/sentences/talking/"
     GREETING_SENTENCES_PATH     = "assets/sentences/greeting/"
     REMOVAL_SENTENCES_PATH      = "assets/sentences/removal/"
+
+    # Bar paths
+    BOSS_BAR_IMG_PATH           = "assets/UI/boss_bar_border.png"
+    POSTURE_BAR_BORDER_PATH     = "assets/UI/posture_bar_border.png"
+    PLR_HEALTH_BAR_BORDER_PATH  = "assets/UI/player_health_bar_border.png"
+    SIDEBAR_BORDER_PATH         = "assets/UI/sidebar_border.png"
+    BOSS_BAR_PINS_PATH          = "assets/UI/boss_bar_pins.png"
+    POSTURE_BAR_PINS_PATH       = "assets/UI/posture_bar_pins.png"
+    PLR_HEALTH_BAR_PINS_PATH    = "assets/UI/player_health_bar_pins.png"
+    BOSS_BAR_SKULL_PATH         = "assets/UI/boss_bar_skull.png"
+    PARRY_OVERLAY_PATH          = "assets/UI/parry_overlay.png"
+    PARRY_COOLDOWN_ICON_PATH    = "assets/UI/boss_bar_skull.png"
+    ICON_FRAME_PATH             = "assets/UI/parry_overlay.png"
     
     # Sounds
     END_TALKING_SOUND           = "assets/sounds/end_talking.mp3"
@@ -83,8 +92,24 @@ class SharkoConstants:
     DREAD_BREATH_SOUND          = "assets/sounds/fight-sfx/Breath.mp3"
 
     # Fight constants
-    MAX_HEALTH                  = 2000
+    MAX_BOSS_HEALTH             = 2000
+    MAX_PLAYER_HEALTH           = 500
+    MAX_POSTURE                 = 20
+    POSTURE_PARRY_COST          = 4.0
+    POSTURE_DECAY_PER_SECOND    = 0.04
+    POSTURE_BREAK_COOLDOWN      = 3.0
     M1_DAMAGE                   = 30
+
+    # Attack statistics
+    ATTACK_STATS = {
+        "icon_attack": {"damage": 20, "posture": 3},
+        "toast_attack": {"damage": 40, "posture": 5},
+        "falling_sharko": {"damage": 100, "posture": 15},
+        "jump": {"damage": 20, "posture": 2},
+        "single_lazer_hit": {"damage": 5, "posture": 1},
+        "sword_slash": {"damage": 25, "posture": 3},
+    }
+
 
     # Fonts
     FONT                        = r"assets/fonts/TheFont.ttf" #Pillow format
@@ -110,14 +135,17 @@ class SharkoConstants:
     LVM_GETEXTENDEDLISTVIEWSTYLE = LVM_FIRST + 55
     LVM_SETEXTENDEDLISTVIEWSTYLE = LVM_FIRST + 54
     SUPRESS_DESKTOP_MENU_TIMER_ID = 1
+
+    # Windows Registry Paths
+    PUSH_NOTIFICATIONS_REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\PushNotifications"
     
     # Movement & Physics
     WALKSPEED = 230  # Pixels per second
     
     # Combat Mechanics
     PARRY_WINDOW            = 0.3  # seconds
-    PARRY_BLOCK_COOLDOWN    = 0.75  # seconds
-    ATTACK_COOLDOWN    = 0.75  # seconds
+    PARRY_BLOCK_COOLDOWN    = 0.75
+    ATTACK_COOLDOWN    = 0.75
     
     # UI & Text Rendering
     SPRITE_WIDTH = 165
@@ -135,6 +163,10 @@ class SharkoConstants:
     FONT_SIZE_MIN               = 8
     FRAME_DELAY_MS              = 16  # Milliseconds between animation frames
 
+    TOAST_TEXT = {
+        "titles": ["Attack!", "Destroy!"],
+        "descriptions": ["ROARRRRRRRRRR", "Block parry dodge", "Thy end is now!"]
+    }
 
     try:
         file = open("Lines.txt", "r", encoding="utf-8")

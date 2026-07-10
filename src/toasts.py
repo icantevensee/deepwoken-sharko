@@ -5,6 +5,7 @@ import                          time
 import                          threading
 
 import                          ctypes
+from ctypes              import wintypes
 
 import                          win32api
 import                          win32gui
@@ -57,6 +58,16 @@ class ToastManager:
             # Extract bits while DCs are active
             bmpinfo = bitmap.GetInfo()
             bmpstr = bitmap.GetBitmapBits(True)
+            expected_size = bmpinfo['bmWidth'] * bmpinfo['bmHeight'] * 4  # RGBA = 4 bytes per pixel
+            
+            # Validate bitmap data completeness
+            if bmpstr is None or len(bmpstr) < expected_size:
+                win32gui.DeleteObject(bitmap.GetHandle())
+                save_dc.DeleteDC()
+                mfc_dc.DeleteDC()
+                win32gui.ReleaseDC(hwnd, hwnd_dc)
+                raise ValueError(f"Incomplete bitmap capture: got {len(bmpstr) if bmpstr else 0} bytes, expected {expected_size}")
+            
             img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
 
             # CLEANUP PATH A: Delete memory DCs first, then release window DC
@@ -79,6 +90,16 @@ class ToastManager:
             # Extract bits while DCs are active
             bmpinfo = bitmap.GetInfo()
             bmpstr = bitmap.GetBitmapBits(True)
+            expected_size = bmpinfo['bmWidth'] * bmpinfo['bmHeight'] * 4  # RGBA = 4 bytes per pixel
+            
+            # Validate bitmap data completeness
+            if bmpstr is None or len(bmpstr) < expected_size:
+                win32gui.DeleteObject(bitmap.GetHandle())
+                save_dc.DeleteDC()
+                mfc_dc.DeleteDC()
+                win32gui.ReleaseDC(h_desktop, desktop_dc)
+                raise ValueError(f"Incomplete bitmap capture: got {len(bmpstr) if bmpstr else 0} bytes, expected {expected_size}")
+            
             img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
 
             # CLEANUP PATH B: Delete memory DCs first, then release desktop DC
@@ -96,10 +117,9 @@ class ToastManager:
         ctypes.windll.ole32.CoInitializeEx(None, SharkoConstants.COINIT_APARTMENTTHREADED)
 
         try:
-            TARGET_AUMID = "Microsoft.Windows.Accessibility.Utilities"
+            TARGET_AUMID = "Destroyman III"
             history_manager = ToastNotificationManager.history
             history_manager.clear_with_id(TARGET_AUMID)
-
             winsound.PlaySound("Notification.Default", winsound.SND_ALIAS | winsound.SND_ASYNC)
             toast_thread = threading.Thread(target=lambda:
                 toast(
@@ -113,41 +133,51 @@ class ToastManager:
             ), daemon=True)
             toast_thread.start()
 
-
-            time.sleep(0.3)
-
             toast_hwnd = None
             target_crop_bounds = None
+            screen_w = win32api.GetSystemMetrics(0)
+            timeout = 1.5
+            start_time = time.time()
 
-            root = auto.GetRootControl()
-            for win in root.GetChildren():
-                if win.ClassName == 'Windows.UI.Core.CoreWindow':
-                    toast_hwnd = win.NativeWindowHandle
-                    for el, depth in auto.WalkControl(win, includeTop=False):
-                        try:
-                            if title in str(el.Name):
-                                current = el
-                                for _ in range(5):
-                                    parent = current.GetParentControl()
-                                    if parent:
-                                        rect = parent.BoundingRectangle
-                                        width = rect.right - rect.left
-                                        if 300 < width < 500:
-                                            target_crop_bounds = rect
-                                            break
-                                    current = parent
+            while (time.time() - start_time) < timeout:
+                root = auto.GetRootControl()
+                for win in root.GetChildren():
+                    try:
+                        if win.ClassName == 'Windows.UI.Core.CoreWindow':
+                            toast_hwnd = win.NativeWindowHandle
+                            for el, depth in auto.WalkControl(win, includeTop=False):
+                                try:
+                                    if title in str(el.Name):
+                                        current = el
+                                        for _ in range(5):
+                                            parent = current.GetParentControl()
+                                            if parent:
+                                                rect = parent.BoundingRectangle
+                                                width = rect.right - rect.left
+                                                if width >= 0.1 * screen_w and width <= 0.5 * screen_w:
+                                                    target_crop_bounds = rect
+                                                    break
+                                            current = parent
+                                        break
+                                except Exception as e:
+                                    pass
+                            if target_crop_bounds:
                                 break
-                        except Exception:
-                            pass
-                    if target_crop_bounds:
-                        break
-
+                    except Exception as e:
+                        pass
+                if target_crop_bounds:
+                    break
+                time.sleep(0.05) 
             if not toast_hwnd or not target_crop_bounds:
                 history_manager.clear_with_id(TARGET_AUMID)
                 return
-
-            full_stack_img, win_x1, win_y1 = self._capture_window(toast_hwnd, False)
-            full_stack_img2, win_x1, win_y1 = self._capture_window(toast_hwnd, True)
+            time.sleep(0.3)
+            try:
+                full_stack_img, win_x1, win_y1 = self._capture_window(toast_hwnd, False)
+                full_stack_img2, win_x1, win_y1 = self._capture_window(toast_hwnd, True)
+            except (ValueError, Exception):
+                history_manager.clear_with_id(TARGET_AUMID)
+                return
             local_x1 = max(0, target_crop_bounds.left - win_x1)
             local_y1 = max(0, target_crop_bounds.top - win_y1)
             local_x2 = min(full_stack_img.width, local_x1 + target_crop_bounds.width())
@@ -162,7 +192,6 @@ class ToastManager:
             transparent_img = ImgUtils._remove_black_background(cropped_img2)
             cropped_img2.close()
             alpha_mask = transparent_img.split()[3]
-
             final_masked_img = cropped_img.copy()
             final_masked_img.putalpha(alpha_mask)
             cropped_img.close()
@@ -213,8 +242,8 @@ class ToastManager:
         perpx = -base_dy / base_dist
         perpy = base_dx / base_dist
 
-        pixel_speed_per_frame = 25.0
-        total_frames = max(5, int(base_dist / pixel_speed_per_frame))
+        pixel_speed_per_frame = 32.5
+        total_frames = int(base_dist / pixel_speed_per_frame)
 
         screen_w = win32api.GetSystemMetrics(0)
         screen_h = win32api.GetSystemMetrics(1)
@@ -257,7 +286,7 @@ class ToastManager:
                 t = 1.0
                 toast_states["has_hit_mouse"] = True
                 if self.damage_callback is not None:
-                    self.damage_callback()
+                    self.damage_callback("toast_attack")
 
             base_x = toast_states["start_x"] + toast_states["base_dx"] * t
             base_y = toast_states["start_y"] + toast_states["base_dy"] * t
@@ -308,7 +337,7 @@ class ToastManager:
             return
 
         window_handle.move(int(next_x), int(next_y))
-        QTimer.singleShot(10, lambda: self.animate_constant_speed_frame(window_handle, toast_states, w, h))
+        QTimer.singleShot(13, lambda: self.animate_constant_speed_frame(window_handle, toast_states, w, h))
 
     def cleanup_toast(self, window_handle):
         """Safely removes the window from UI memory to allow garbage collection."""

@@ -422,7 +422,7 @@ class SwordWindow(QWidget):
                  self._damage_fired = False
             elif not hasattr(self, "_damage_fired") or not self._damage_fired:
                 if p >= 0.5:
-                    self.damage_callback()
+                    self.damage_callback("sword_slash")
                     print("Damage callback fired!")
                     self._damage_fired = True
 

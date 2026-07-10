@@ -13,8 +13,8 @@ import                     win32gui
 
 from ctypes         import windll
 from PIL            import Image
-from PyQt5.QtGui    import QPixmap
-from PyQt5.QtCore   import QTimer
+from PyQt5.QtGui    import QPixmap, QPainter
+from PyQt5.QtCore   import QTimer, Qt
 
 from math_utils     import MathUtils
 from img_utils      import ImgUtils
@@ -27,20 +27,21 @@ from widgets        import SwordWindow
 class CombatSystem():
     
     @staticmethod
-    def damage(self): #@staticmethod is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
+    def damage(self, attack_type): #@staticmethod is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
         if not hasattr(self, "particles_manager"):
             return
         current_time = time.time()
         mouse_x, mouse_y = win32api.GetCursorPos()
-        
-        # Check if in parry/block window (parry window OR key is still held)
+
+        posture_amount = self.ATTACK_STATS[attack_type]["posture"]
+        damage_amount = self.ATTACK_STATS[attack_type]["damage"]
+
         if current_time < self.parry_active_until or self.f_key_held:
-            # Check cooldown
-            # Calculate how long the key has been held
             time_held = current_time - self.parry_press_time if self.f_key_held else 0
-            # Block if held >= 0.3s, otherwise parry
             if time_held >= self.PARRY_WINDOW:
-                self.last_parry_block_time = 0
+                self.last_parry_block_time = current_time
+                if hasattr(self, "_apply_posture"):
+                    self._apply_posture(posture_amount)
                 try:
                     self.sounds(self.sounds_group["block"])
                 except Exception as e:
@@ -49,6 +50,8 @@ class CombatSystem():
                     self.particles_manager.play_block(mouse_x, mouse_y)
             else:
                 self.last_parry_block_time = 0
+                if hasattr(self, "_apply_posture"):
+                    self._apply_posture(-self.POSTURE_PARRY_COST)
                 try:
                     self.sounds(self.sounds_group["parry"])
                 except Exception as e:
@@ -56,9 +59,6 @@ class CombatSystem():
                 if self.particles_manager:
                     self.particles_manager.play_parry(mouse_x, mouse_y)
             
-            # Clear flags after successful block/parry
-            self.blocking = False
-            self.block_active_until = 0
             if self.block_transition_callback:
                 try:
                     self.block_transition_callback.deleteLater()
@@ -71,7 +71,6 @@ class CombatSystem():
         if current_time >= self.parry_active_until:
             self.blocking = False
             self.parry_active_until = 0
-            self.block_active_until = 0
             self.f_key_held = False
             if self.block_transition_callback:
                 try:
@@ -84,7 +83,6 @@ class CombatSystem():
         if self.particles_manager:
             self.particles_manager.play_blood(mouse_x, mouse_y)
         try:
-            # Try to play a hit/damage sound if it exists
             self.sounds(self.sounds_group["hit"])
         except Exception as e:
             pass
@@ -92,8 +90,8 @@ class CombatSystem():
     def damage_sharko(self):
         if not hasattr(self,"particles_manager"):
             return
-        self.bar_guis.health -= self.M1_DAMAGE
-        self.bar_guis.percentage = self.bar_guis.health/self.MAX_HEALTH
+        self.bar_guis.boss_health -= self.M1_DAMAGE
+        self.bar_guis.bb_percentage = self.bar_guis.boss_health/self.MAX_BOSS_HEALTH
         mouse_x, mouse_y = win32api.GetCursorPos()
         self.particles_manager.play_sharko_blood(mouse_x, mouse_y)
         try:
@@ -206,7 +204,7 @@ class CombatSystem():
                 
                 if sprite_x <= mouse_x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= mouse_y <= sprite_y + self.SPRITE_HEIGHT:
                     hit_detected = True
-                    CombatSystem.damage(self)
+                    CombatSystem.damage(self, "jump")
             
             current_step += 1
             if current_step < Steps:
@@ -321,7 +319,7 @@ class CombatSystem():
                 
                 if sprite_x <= mouse_x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= mouse_y <= sprite_y + self.SPRITE_HEIGHT:
                     hit_detected = True
-                    CombatSystem.damage(self)
+                    CombatSystem.damage(self, "jump")
             
             if not hit_db:
                 current_count = win32gui.SendMessage(hwnd_lv, self.LVM_GETITEMCOUNT, 0, 0)
@@ -358,146 +356,174 @@ class CombatSystem():
         step_move()
 
     def lazer(self, duration_ms, on_complete=None):
-        self.pivot_images = {
-            "Pivot_Body": Image.open(os.path.join(self.IMAGES_PATH, "Pivot_Body.png")).convert("RGBA"),
-            "Pivot_Face": Image.open(os.path.join(self.IMAGES_PATH, "Pivot_Face.png")).convert("RGBA"),
-            "Pivot_Corals": Image.open(os.path.join(self.IMAGES_PATH, "Pivot_Corals.png")).convert("RGBA")
-        }
+        # 1. Load images ONCE into native Qt formats to save CPU
+        self._lazer_body = QPixmap(os.path.join(self.IMAGES_PATH, "Pivot_Body.png"))
+        self._lazer_face = QPixmap(os.path.join(self.IMAGES_PATH, "Pivot_Face.png"))
+        self._lazer_corals = QPixmap(os.path.join(self.IMAGES_PATH, "Pivot_Corals.png"))
 
-        start_time = time.time()
-        body_width = self.pivot_images["Pivot_Body"].width
-        body_height = self.pivot_images["Pivot_Body"].height
-        center_p = (body_width // 2, body_height // 2)
-        offset_x, offset_y = 0,0
+        self._lazer_start_time = time.time()
+        body_width = self._lazer_body.width()
+        body_height = self._lazer_body.height()
+        
+        self._lazer_center_x = body_width / 2.0
+        self._lazer_center_y = body_height / 2.0
+        
+        offset_x, offset_y = 0, 0
+        current_geom = self.window.geometry()
+        current_x, current_y = current_geom.x(), current_geom.y()
+        
         if self.current_facing == "Right":
-            offset_x = self.WINDOW_SIZE_X-body_width
-            offset_y = self.WINDOW_SIZE_Y-body_height
-            current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
-            self.window.move(current_x + offset_x, current_y + offset_y)
+            offset_x = self.WINDOW_SIZE_X - body_width
+            offset_y = self.WINDOW_SIZE_Y - body_height
         else:
-            offset_y = self.WINDOW_SIZE_Y-body_height
-            current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
-            self.window.move(current_x + offset_x, current_y + offset_y)
-        frame1db = False
-        lastangle = 0
-        damagetimer = 0
-        Indicator_Length = 0.5*1000
-        lazer_dir = None
+            offset_y = self.WINDOW_SIZE_Y - body_height
+            
+        self.window.move(current_x + offset_x, current_y + offset_y)
+        
+        # Cache coordinates to prevent per-frame Win32 OS polling lag
+        self._cached_win_x = current_x + offset_x
+        self._cached_win_y = current_y + offset_y
+
+        self._lazer_frame1db = False
+        self._lazer_lastangle = 0.0
+        self._lazer_damagetimer = 0
+        self._lazer_indicator_length = 500.0
+        self._lazer_dir = "Right"
+        self._lazer_duration = duration_ms
+        self._lazer_on_complete = on_complete
+        self._lazer_offset_x = offset_x
+        self._lazer_offset_y = offset_y
+
         def update_lazer():
-            nonlocal lazer_dir,frame1db, lastangle, damagetimer
-            elapsed = (time.time() - start_time) * 1000
-            if elapsed < duration_ms:
-                window_x, window_y = self.window.geometry().x(), self.window.geometry().y()
-                
-                screen_center_x = window_x + center_p[0]
-                screen_center_y = window_y + center_p[1]
-                
-
+            elapsed = (time.time() - self._lazer_start_time) * 1000.0
+            if elapsed < self._lazer_duration:
                 mouse_x, mouse_y = win32api.GetCursorPos()
+                screen_center_x = self._cached_win_x + self._lazer_center_x
+                screen_center_y = self._cached_win_y + self._lazer_center_y
 
-                lazer_dir = "Right" if mouse_x < screen_center_x else "Left"
-
-                def get_dir_img(name):
-                    img = self.pivot_images[name]
-                    return  img.transpose(Image.FLIP_LEFT_RIGHT) if lazer_dir == "Left" else img
-
-                body = get_dir_img("Pivot_Body")
-                face = get_dir_img("Pivot_Face")
-                corals = get_dir_img("Pivot_Corals")
+                self._lazer_dir = "Right" if mouse_x < screen_center_x else "Left"
 
                 rel_x = mouse_x - screen_center_x
                 rel_y = mouse_y - screen_center_y
                 
-                dirconst = -1 if lazer_dir == "Right" else 1
-                calc_x = dirconst*rel_x
-                angle_rad = math.atan2(rel_y, calc_x)
-                angle_deg = math.degrees(angle_rad)
-                angle_deg = dirconst*angle_deg
+                dirconst = -1.0 if self._lazer_dir == "Right" else 1.0
+                angle_rad = math.atan2(rel_y, dirconst * rel_x)
+                angle_deg = dirconst * math.degrees(angle_rad)
 
-                norm_angle = ((angle_deg + 180) % 360 - 180)*dirconst
-                if elapsed < Indicator_Length:
-                    norm_angle = lastangle + 0.2 * (norm_angle - lastangle)
-                    lastangle = norm_angle
-                face_angle = max(min(norm_angle, 16), -60)
-                overflow_angle = (norm_angle - face_angle)*dirconst
-                face_angle = face_angle*dirconst
-                rot_dir = -1 
+                norm_angle = ((angle_deg + 180.0) % 360.0 - 180.0) * dirconst
+                if elapsed < self._lazer_indicator_length:
+                    norm_angle = self._lazer_lastangle + 0.2 * (norm_angle - self._lazer_lastangle)
+                    self._lazer_lastangle = norm_angle
+                    
+                face_angle = max(min(norm_angle, 16.0), -60.0)
+                overflow_angle = (norm_angle - face_angle) * dirconst
 
-                rad = math.radians(norm_angle*dirconst)
-                local_offset_x = 80 * dirconst
-                local_offset_y = 15
-                rotated_offset_x = local_offset_x * math.cos(rad) - local_offset_y * math.sin(rad)
-                rotated_offset_y = local_offset_x * math.sin(rad) + local_offset_y * math.cos(rad)
+                rad_val = math.radians(norm_angle * dirconst)
+                local_offset_x = 80.0 * dirconst
+                local_offset_y = 15.0
+                
+                rotated_offset_x = local_offset_x * math.cos(rad_val) - local_offset_y * math.sin(rad_val)
+                rotated_offset_y = local_offset_x * math.sin(rad_val) + local_offset_y * math.cos(rad_val)
 
                 pivot_x = screen_center_x + rotated_offset_x
                 pivot_y = screen_center_y + rotated_offset_y
-                mouse_x, mouse_y = win32api.GetCursorPos()
-                dx, dy = mouse_x - pivot_x, mouse_y - pivot_y
-                angle = math.degrees(math.atan2(dy, dx))
-                if not frame1db:
+                angle = math.degrees(math.atan2(mouse_y - pivot_y, mouse_x - pivot_x))
+                
+                if not self._lazer_frame1db:
                     self.particles_manager.play_star_pop(pivot_x, pivot_y, count=1)
-                    frame1db = True
-                if elapsed > Indicator_Length:
+                    self._lazer_frame1db = True
+                    
+                if elapsed > self._lazer_indicator_length:
                     self.particles_manager.set_laser("Sharko_Lazer", pivot_x, pivot_y, angle, offset=0)
-                    damagetimer = damagetimer+1
-                    if damagetimer >= 3:
-                        CombatSystem.damage(self)
-                        damagetimer = 0
+                    self._lazer_damagetimer += 1
+                    if self._lazer_damagetimer >= 3:
+                        CombatSystem.damage(self, "single_lazer_hit")
+                        self._lazer_damagetimer = 0
 
-                rotated_face = face.rotate(
-                    rot_dir * face_angle, 
-                    center=center_p, 
-                    resample=Image.BICUBIC, 
-                    fillcolor=(0,0,0,0)
-                )
+                canvas = QPixmap(self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
+                canvas.fill(Qt.transparent)
                 
-                f_alpha = rotated_face.split()[3]
-                clean_mask = f_alpha.point(lambda p: 255 if p > 245 else 0)
-                rotated_face.putalpha(clean_mask)
+                painter = QPainter(canvas)
+                painter.setRenderHint(QPainter.SmoothPixmapTransform)
+                
+                flip = self._lazer_dir == "Left"
 
-                combined = Image.new("RGBA", (self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y), (0, 0, 0, 0))
-                combined.paste(body, (0, 0), body)
-                combined.paste(rotated_face, (0, 0), rotated_face)
-                combined.paste(corals, (0, 0), corals)
+                if overflow_angle != 0.0:
+                    painter.translate(self._lazer_center_x, self._lazer_center_y)
+                    painter.rotate(-overflow_angle)
+                    painter.translate(-self._lazer_center_x, -self._lazer_center_y)
 
-                if overflow_angle != 0:
-                    combined = combined.rotate(
-                        rot_dir * overflow_angle, 
-                        center=center_p, 
-                        resample=Image.BICUBIC, 
-                        fillcolor=(0,0,0,0)
-                    )
+                painter.save()
+                if flip:
+                    painter.translate(self._lazer_body.width(), 0)
+                    painter.scale(-1, 1)
+                painter.drawPixmap(0, 0, self._lazer_body)
+                painter.restore()
+
+                painter.save()
+                if flip:
+                    painter.translate(self._lazer_center_x, self._lazer_center_y)
+                    painter.scale(-1, 1)
+                    painter.rotate(-face_angle)
+                    painter.translate(-self._lazer_center_x, -self._lazer_center_y)
+                else:
+                    painter.translate(self._lazer_center_x, self._lazer_center_y)
+                    painter.rotate(-face_angle)
+                    painter.translate(-self._lazer_center_x, -self._lazer_center_y)
                 
-                # Convert PIL image to QPixmap
-                final_pixmap = ImgUtils._pil_to_qpixmap(combined)
-                self.label.setPixmap(final_pixmap)
-                
-                # Schedule next update
+                painter.drawPixmap(0, 0, self._lazer_face)
+                painter.restore()
+
+                painter.save()
+                if flip:
+                    painter.translate(self._lazer_corals.width(), 0)
+                    painter.scale(-1, 1)
+                painter.drawPixmap(0, 0, self._lazer_corals)
+                painter.restore()
+                painter.end()
+
+                self.label.setPixmap(canvas)
             else:
-                if hasattr(self, "temp_combat_timer") and self.temp_combat_timer:
-                    self.temp_combat_timer.stop()
-                    self.temp_combat_timer.deleteLater()
-                    self.temp_combat_timer = None
-                self.particles_manager.remove_laser("Sharko_Lazer")
-                l_r_offset = 0
-                if self.current_facing != lazer_dir:
-                    if self.current_facing == "Right":
-                        l_r_offset=self.WINDOW_SIZE_X//2
-                    else:
-                        l_r_offset=-self.WINDOW_SIZE_X//2
-                self.current_facing = lazer_dir
-                current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
-                self.window.move(current_x - offset_x + l_r_offset, current_y - offset_y)
-                if hasattr(self, "pivot_images") and self.pivot_images:
-                    for img in self.pivot_images.values():
-                        img.close() 
-                    self.pivot_images.clear()
-                    del self.pivot_images
-                if on_complete: on_complete()
+                cleanup_lazer()
+
+        def cleanup_lazer():
+            if hasattr(self, "temp_combat_timer") and self.temp_combat_timer:
+                self.temp_combat_timer.stop()
+                self.temp_combat_timer.deleteLater()
+                self.temp_combat_timer = None
+                
+            self.particles_manager.remove_laser("Sharko_Lazer")
+            
+            l_r_offset = 0
+            if self.current_facing != self._lazer_dir:
+                l_r_offset = self.WINDOW_SIZE_X // 2 if self.current_facing == "Right" else -self.WINDOW_SIZE_X // 2
+                
+            self.current_facing = self._lazer_dir
+            geom = self.window.geometry()
+            target_x = geom.x() - self._lazer_offset_x + l_r_offset
+            target_y = geom.y() - self._lazer_offset_y
+
+            hwnd = int(self.window.winId())
+            windll.user32.SetWindowPos(hwnd, 0, target_x, target_y, 0, 0, 0x0008 | 0x0004 | 0x0001)
+
+            if hasattr(self, "label") and self.label:
+                self.label.clear()
+
+            from PyQt5.QtCore import QCoreApplication
+            self.window.repaint()
+            QCoreApplication.processEvents()
+
+            del self._lazer_body
+            del self._lazer_face
+            del self._lazer_corals
+            
+            if self._lazer_on_complete: 
+                self._lazer_on_complete()
 
         self.temp_combat_timer = QTimer()
         self.temp_combat_timer.timeout.connect(update_lazer)
         self.temp_combat_timer.start(30)
+
 
 
     def area_belly_flop(self, warning_time, num_subdivisions, num_subdivisions_to_attack, work_area_height, on_complete=None):
@@ -569,16 +595,16 @@ class CombatSystem():
                 )
             )
         )
-
+ 
     def toast_attack(self, on_complete=None):
-        self.toast_manager.trigger_toast_async("Sharko Toast", "Sharko is attacking!")
+        self.toast_manager.trigger_toast_async(random.choice(self.TOAST_TEXT["titles"]), random.choice(self.TOAST_TEXT["descriptions"]))
         if on_complete: on_complete()
 
 
     def summon_sword(self):
         if hasattr(self, "sword_window") and self.sword_window:
             return
-        self.sword_window = SwordWindow(lambda: self.current_facing,damage_callback=lambda:CombatSystem.damage(self))
+        self.sword_window = SwordWindow(lambda: self.current_facing,damage_callback=self.forward_damage)
         self.sword_window.initialize(self.window)
 
     def sword_combo(self, num_attacks):
@@ -588,8 +614,8 @@ class CombatSystem():
         self.sword_window.set_follow_mode("mouse")
 
         for attack in range(num_attacks):
-            self._single_shot(attack*1000+500,self.sword_window.attack)
-        self._single_shot(num_attacks*1000+500,lambda: self.sword_window.set_follow_mode("window",self.window))
+            self.math.single_shot(attack*1000+500,self.sword_window.attack)
+        self.math.single_shot(num_attacks*1000+500,lambda: self.sword_window.set_follow_mode("window",self.window))
 
 
         

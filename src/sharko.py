@@ -49,8 +49,7 @@ from img_utils          import ImgUtils
 import                         psutil
 
 
-# Enable high DPI scaling for PyQt5 on Windows
-os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+# Enable dpi scaling
 try:
     windll.user32.SetProcessDpiAwarenessContext(c_void_p(-4))
     print("Modern Per-Monitor V2 Awareness Active.")
@@ -81,12 +80,6 @@ class Sharko(SharkoConstants, IconManager):
 
     def __init__(self):
         """Initialize Sharko character with paths to animation assets.
-                
-        Args:
-            image_path: Path to idle/walking animation images
-            talking_path: Path to talking animation images
-            greeting_path: Path to greeting animation images
-            removal_path: Path to removal animation images
         """
         #APPLICATION & GUI SETUP
         if not QApplication.instance():
@@ -174,9 +167,11 @@ class Sharko(SharkoConstants, IconManager):
         self.parry_press_time           = 0
         self.parry_active_until         = 0
         self.last_parry_block_time      = 0
-        self.block_active_until         = 0
         self.f_key_held                 = False
         self.blocking                   = False
+        self.posture                    = 0
+        self.posture_break_cooldown_until = 0
+        self._last_posture_update_time  = 0
         
 
         #ASSET LOADING
@@ -200,7 +195,7 @@ class Sharko(SharkoConstants, IconManager):
         
         #STARTUP SEQUENCE
         self.sounds(self.sounds_group["greeting"])
-        self.add_talking_sentences(self.intro_line.strip(),"greeting",False)
+        self.add_talking_sentences(self.intro_line.strip(), "greeting", False)
         
         self.window.show()
         
@@ -278,6 +273,41 @@ class Sharko(SharkoConstants, IconManager):
                 pass
         self.active_timers.clear()
 
+    def _cancel_block_transition(self):
+        if self.block_transition_callback:
+            self.block_transition_callback.stop()
+            self.block_transition_callback.deleteLater()
+            self.block_transition_callback = None
+        self.blocking = False
+        self.parry_press_time = 0
+        self.f_key_held = False
+    
+    @staticmethod
+    def _calculate_new_posture(current_posture, posture_amount, max_posture):
+        if max_posture <= 0:
+            return 0, False
+
+        new_posture = max(0, min(max_posture, current_posture + posture_amount))
+        overflow = new_posture >= max_posture and posture_amount > 0
+        return new_posture, overflow
+
+    def _apply_posture(self, posture_amount):
+        """Adjust posture and trigger the posture-break state if it fills up."""            
+        current_posture = self.posture
+        new_posture, overflow = self._calculate_new_posture(current_posture, posture_amount, self.MAX_POSTURE)
+
+
+        if overflow and current_posture < self.MAX_POSTURE:
+            self.posture = 0
+            QTimer.singleShot(200, lambda: (setattr(self.bar_guis, 'pb_percentage', 0), setattr(self, 'posture', 0)))
+            self._cancel_block_transition()
+            self.posture_break_cooldown_until = time.time() + self.POSTURE_BREAK_COOLDOWN
+        self.posture = new_posture
+        return new_posture
+    
+    def forward_damage(self, attack_type):
+        CombatSystem.damage(self, attack_type)
+
     def _create_gui(self):
         """Create and configure the GUI elements (label, menus, window properties)."""
         layout = QVBoxLayout(self.window)
@@ -303,7 +333,7 @@ class Sharko(SharkoConstants, IconManager):
         slider_action.setDefaultWidget(volume_widget)
         self.menu.addAction(slider_action)
         self.menu.addAction("Walking off", self.toggle_walking).setCheckable(True)
-        self.menu.addAction("Flip side", self.flip_side)
+        self.menu.addAction("Flip side", lambda: self.flip_side(True))
         self.menu.addAction("Close", self.close_command)
         self.window.setWindowTitle("Sharko")
         self.window.setFixedSize(self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
@@ -355,11 +385,13 @@ class Sharko(SharkoConstants, IconManager):
             "removal": [],
         }
 
-    def _toggle_menu_items(self, whitelist):
+    def _toggle_menu_items(self, whitelist, enable):
         """Toggle enabled/disabled state of menu items."""
         for action in self.menu.actions():
             if action.text() not in whitelist:
-                action.setEnabled(not action.isEnabled())
+                action.setEnabled(enable)
+            else:
+                action.setEnabled(True)
 
     def animate(self):
         """Update and render current animation frame based on character state."""
@@ -384,9 +416,6 @@ class Sharko(SharkoConstants, IconManager):
 
     def move_window_x(self, target_x):
         """Animate character window movement to target X position.
-        
-        Args:
-            target_x: Target X coordinate
         """
         start_x = self.window.x()
 
@@ -403,7 +432,7 @@ class Sharko(SharkoConstants, IconManager):
                 return
             if current_step >= num_steps:
                 self.window.setGeometry(target_x, self.window.y(), self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
-                self.flip_side()
+                self.flip_side(False)
                 return
 
             new_x = int(current_x + step_dx)
@@ -417,7 +446,7 @@ class Sharko(SharkoConstants, IconManager):
         if self.cutscene_active:
             return
         self.cutscene_active = True
-        self._toggle_menu_items(["Sounds off", "Close"])
+        self._toggle_menu_items(["Close"], False)
         self.new_state("cutscene")
         cutscene = self.cutscene_presets[cutscene_preset]
         for frame in cutscene:
@@ -426,13 +455,12 @@ class Sharko(SharkoConstants, IconManager):
 
     def _play_cutscene_frame(self, cutscene, current_frame, cutscene_preset, repeat_count):
         
-        print(current_frame)
         if cutscene_preset == "InactiveCutscene" and self.get_inactive_length() < self.INACTIVE_TIME_REQUIREMENT and current_frame < 6:
                 current_frame = 6
                 self.talking_disabled = True
         if current_frame == len(cutscene):
             self.cutscene_active = False
-            self._toggle_menu_items(["Sounds off", "Close"])
+            self._toggle_menu_items(["Close"], True)
             self.idle_state()
             return
         
@@ -563,7 +591,9 @@ class Sharko(SharkoConstants, IconManager):
         if self.current_state == "walking":
             self.new_state("idle")
 
-    def flip_side(self):    
+    def flip_side(self, manual_activation = False):    
+        if manual_activation == True and self.current_state == "walking":
+            return
         self.window.raise_()
         
         if self.current_facing == "Right":
@@ -584,14 +614,13 @@ class Sharko(SharkoConstants, IconManager):
     def _on_f_pressed_safe(self):
         # Only initialize on first press, not on key repeat
         current_time = time.time()
+        if current_time < self.posture_break_cooldown_until:
+            return
         if self.parry_press_time == 0 and current_time - self.last_parry_block_time >= self.PARRY_BLOCK_COOLDOWN:
             self.last_parry_block_time = current_time
             # Cancel any pending callback from previous key press
-            if self.block_transition_callback:
-                self.block_transition_callback.stop()
-                self.block_transition_callback.deleteLater()
-                self.block_transition_callback = None
-            
+            self._cancel_block_transition()
+
             # Start parry window
             self.f_key_held = True
             self.parry_press_time = time.time()
@@ -602,9 +631,8 @@ class Sharko(SharkoConstants, IconManager):
                 # Check both that key is held AND that 0.3s has actually passed
                 if self.f_key_held and (time.time() - self.parry_press_time) >= self.PARRY_WINDOW:
                     self.blocking = True
-                    self.block_active_until = time.time() + self.PARRY_WINDOW
                     # Extend parry window to include block window
-                    self.parry_active_until = self.block_active_until
+                    self.parry_active_until = time.time() + self.PARRY_WINDOW
                     self.sounds(self.sounds_group["block_attempt"])
             
             self.block_transition_callback = self._add_timer(QTimer())
@@ -615,15 +643,8 @@ class Sharko(SharkoConstants, IconManager):
     def _on_f_released_safe(self):
         # Handle parry key release (f)
         self.f_key_held = False
-        # Cancel pending block transition if released early
-        if self.block_transition_callback:
-            self.block_transition_callback.stop()
-            self.block_transition_callback.deleteLater()
-            self.block_transition_callback = None
-        
-        # If we were blocking, stop it on release
-        self.blocking = False
-        self.parry_press_time = 0
+        self._cancel_block_transition()
+
 
     def _on_action_safe(self, x, y, button):
         if self.fight_mode_active and button == mouse.Button.left:
@@ -741,18 +762,18 @@ class Sharko(SharkoConstants, IconManager):
         else:
             self.move_window_x(self.screen_x - 179)
 
-    def add_new_question(self,Question_Lines):
-        self.add_talking_sentences(Question_Lines,"talking",True)
+    def add_new_question(self, Question_Lines):
+        self.add_talking_sentences(Question_Lines, "talking",True)
 
-    def add_talking_sentences(self,sentence,state,is_question):
+    def add_talking_sentences(self, sentence, state, is_question):
         if not self.Lines:
             return
         if is_question:
             self._add_question_images(sentence, state)
         else:
-            self._add_talking_images(sentence,state)
+            self._add_talking_images(sentence, state)
 
-    def _add_talking_images(self,sentence,state):
+    def _add_talking_images(self, sentence, state):
         text_img = ImgUtils._render_text_image(self, sentence, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT))
         try:
             base1_photo_image, base2_photo_image = self.images["talk1"], self.images["talk2"]
@@ -838,8 +859,7 @@ class Sharko(SharkoConstants, IconManager):
         self._stop_all_timers()
         if self.cutscene_active:
             self.cutscene_active = False
-            self._toggle_menu_items(["Sounds off", "Close"])
-        self._toggle_menu_items([])
+        self._toggle_menu_items([], False)
         if self.current_state != "removal":
             self.add_talking_sentences(random.choice(self.removal_lines).strip(),"removal",False)
             self.new_state("removal")
@@ -848,7 +868,7 @@ class Sharko(SharkoConstants, IconManager):
             self._single_shot(self.REMOVAL_ANIMATION_DELAY, self.death_animation)
 
     def death_animation(self):
-        screen_x,screen_y = self.window.x(), self.window.y()
+        screen_x, screen_y = self.window.x(), self.window.y()
         window = self.window
         TILE_SIZE = 15
 
@@ -868,7 +888,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.load_tiles(src_path)
                 src_path.size = (SharkoConstants.WINDOW_SIZE_X, SharkoConstants.WINDOW_SIZE_Y)
                 self.resize(self.img_w, self.img_h)
-                self.setGeometry(screen_x-50,screen_y-600, self.img_w, self.img_h)
+                self.setGeometry(screen_x-50, screen_y-600, self.img_w, self.img_h)
                 self.setFixedSize(600,2000)
                 self.show()
                 self.timer.start(16)
@@ -922,7 +942,7 @@ class Sharko(SharkoConstants, IconManager):
         if self.current_state != "fight":
             self.fight_mode_active = True
             WindowsUtils.cache_desktop_handles()
-            blocker_keyboard.add_hotkey('shift+f10', lambda: None, suppress=True) #desktop context menu open shortcut
+            blocker_keyboard.add_hotkey('shift+f10', lambda: None, suppress = True) #desktop context menu open shortcut
             self.suppress_right_click = True
             self._stop_all_timers()
 
@@ -931,14 +951,16 @@ class Sharko(SharkoConstants, IconManager):
                 self.animation_timer.deleteLater()
                 self.animation_timer = None
 
-            self.bar_guis = ScalableHealthBar()
-            screen_w = windll.user32.GetSystemMetrics(0)
-            self.bar_guis.resize(screen_w // 2, 200)
+            self.bar_guis = ScalableHealthBar(bar_height_scale = 0.05, target_obj = self)
+            self.bar_guis.pb_percentage = 0
+            self.posture = 0
+            self.posture_break_cooldown_until = 0.0
+            self._last_posture_update_time = time.time()
             self.bar_guis.slide_in()
             self.warning_manager = MultiWarningOverlay()
             self.screen_shaker = ScreenShaker()
-            self.toast_manager = ToastManager(damage_callback=lambda: CombatSystem.damage(self))
-            self.particles_manager = VFXManager(damage_callback=lambda: CombatSystem.damage(self),screen_shaker = self.screen_shaker)
+            self.toast_manager = ToastManager(damage_callback = self.forward_damage)
+            self.particles_manager = VFXManager(damage_callback = self.forward_damage, screen_shaker = self.screen_shaker)
             self.screen_shaker.particles_manager = self.particles_manager
             self.combat_ai = SharkoCombatAI(self)
             WindowsUtils.disable_desktop_grid_and_autoarrange_universal()
@@ -947,6 +969,7 @@ class Sharko(SharkoConstants, IconManager):
 
             self.new_state("fight")
             self.fight_loop()
+            self._toggle_menu_items(["Fight"], False)
         else:
             self.fight_mode_active = False
             self.suppress_right_click = False
@@ -991,7 +1014,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.warning_manager.deinitialize()
                 self.warning_manager = None
             self.idle_state()
-        self._toggle_menu_items(["Sounds off", "Fight"])
+            self._toggle_menu_items(["Fight"], True)
 
 
     def fight_loop(self):
@@ -1030,7 +1053,7 @@ class Sharko(SharkoConstants, IconManager):
         pitched_sound.set_volume(self.sound_volume)
         pitched_sound.play()
     
-    def sounds_logics(self,volume):
+    def sounds_logics(self, volume):
         self.sound_volume = volume/100        
 
 

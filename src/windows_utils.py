@@ -17,6 +17,7 @@ import win32com.client as   wcomcli
 import                      win32con
 import                      win32gui
 import                      win32process
+import                      winreg
 import                      winshell
 from win32com.client import Dispatch
 from win32com.shell  import shell, shellcon  # type: ignore
@@ -120,6 +121,18 @@ class WindowsUtils:
             current = win32gui.GetParent(current)
         
         return is_desktop        
+
+    @staticmethod
+    def are_notifications_enabled():
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, SharkoConstants.PUSH_NOTIFICATIONS_REG_PATH) as key:
+                value, _ = winreg.QueryValueEx(key, "ToastEnabled")
+                return value == 1
+        except FileNotFoundError:
+            return True
+        except Exception as e:
+            print(f"Error checking master notification switch: {e}")
+            return False
 
     @staticmethod
     def get_work_area_height():

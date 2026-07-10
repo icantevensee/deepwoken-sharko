@@ -35,13 +35,6 @@ class Laser:
 
     def __init__(self, x, y, angle, color=QColor(0, 120, 255), start_offset=50):
         """Initialize a laser effect.
-
-        Args:
-            x: X coordinate of laser origin
-            y: Y coordinate of laser origin
-            angle: Direction angle of laser
-            color: RGB color of laser beam
-            start_offset: Distance from origin to start rendering
         """
         self.origin         = QPointF(float(x), float(y))
         self.angle          = angle
@@ -89,12 +82,6 @@ class Particle:
 
     def __init__(self, x, y, p_type, pixmap=None):
         """Initialize a particle with type-specific properties and physics.
-
-        Args:
-            x: X coordinate
-            y: Y coordinate
-            p_type: Particle type (sparkle, ring, spark, block, blood, laser_square, star)
-            pixmap: Optional image pixmap for rendering
         """
         self.pos = QPointF(float(x), float(y))
         self.pixmap = pixmap
@@ -173,9 +160,6 @@ class Particle:
 
     def update(self, dt):
         """Update particle physics, position, and animation properties.
-
-        Args:
-            dt: Delta time for frame update
         """
         self.elapsed += dt
         if hasattr(self, "gravity"):
@@ -377,7 +361,7 @@ class VFXManager(QWidget):
                     # Check if mouse is within particle bounds
                     if left <= mouse_x <= right and top <= mouse_y <= bottom:
                         p.db = True  # Mark as hit to avoid multiple damage calls
-                        self.damage_callback()
+                        self.damage_callback("falling_sharko")
 
                 self.particles[write_idx] = p
                 write_idx += 1
@@ -620,7 +604,7 @@ class ScreenShaker(QWidget):
             | Qt.Tool
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(0, 0, self.width, self.height)
+        self.setGeometry(0, 0, self.width, self.height-1)
         user32.SetWindowDisplayAffinity(int(self.winId()), SharkoConstants.WDA_EXCLUDEFROMCAPTURE)
         self.captured_pixmap = None
         self.intensity = 0
@@ -650,11 +634,11 @@ class ScreenShaker(QWidget):
             self.stop_and_reset()
             return
 
-        frame = self.camera.grab()
+        frame = self.camera.grab_view()
         if frame is not None:
             height, width, channels = frame.shape
             bytes_per_line = channels * width
-            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_ARGB32)
+            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_ARGB32_Premultiplied)
             self.captured_pixmap = QPixmap.fromImage(q_img)
 
         progress = elapsed / self.duration
@@ -686,9 +670,10 @@ class ScreenShaker(QWidget):
         self.offset_y = 0
         self.hide()
     def paintEvent(self, event):
-        if not self.captured_pixmap:
-            return
         painter = QPainter(self)
+        if not self.captured_pixmap:
+            painter.fillRect(0, 0, self.width, self.height, Qt.transparent)
+            return
         painter.fillRect(0, 0, self.width, self.height, Qt.black)
         painter.drawPixmap(self.offset_x, self.offset_y, self.captured_pixmap)
         painter.end()

@@ -107,7 +107,12 @@ class SharkoCombatAI:
         CombatSystem.lazer(self.sharko, duration_ms, on_complete=self._inter_attack_idle)
 
     def _toast_attack(self):
-        CombatSystem.toast_attack(self.sharko, on_complete=self._inter_attack_idle)
+        if WindowsUtils.are_notifications_enabled():
+            CombatSystem.toast_attack(self.sharko, on_complete=self._inter_attack_idle)
+        else:
+            available_attacks = [attack for attack in self.all_attacks if attack != self._toast_attack]
+            random_attack = random.choice(available_attacks)
+            random_attack()
 
     def _do_sword_poke(self):
         CombatSystem.sword_combo(self.sharko, num_attacks=1)
