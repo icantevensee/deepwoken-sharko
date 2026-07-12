@@ -72,10 +72,10 @@ class MathUtils:
         P2      = (end_x, end_y)
         B, P1   = MathUtils.quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5)
         L2      = MathUtils.quadratic_length(P0, P1, P2, n=2000)
-        
-        T       = 1*(L2/(speed*1800))**0.4
-        Steps   = math.floor(T*30)
-        dt      = T/Steps
+
+        T       = 1 * (L2 / (speed * 1800)) ** 0.4
+        Steps   = math.floor(T * 30)
+        dt      = T / Steps
         ts = np.linspace(0, 1, Steps)
         points  = B(ts)
 

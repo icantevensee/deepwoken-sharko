@@ -15,7 +15,7 @@ import time
 
 import ctypes
 
-from PyQt5.QtCore import QEvent, QFileInfo, QPoint, QRect, Qt, QTimer, pyqtSignal,QSize
+from PyQt5.QtCore import QEvent, QFileInfo, QPoint, QRect, Qt, QTimer, pyqtSignal, QSize
 from PyQt5.QtGui import QColor, QCursor, QFont, QPainter, QPalette, QPen, QTextCursor
 from PyQt5.QtWidgets import (
     QFileIconProvider,
@@ -419,7 +419,7 @@ class SwordWindow(QWidget):
             p = self.anim_p
 
             if self.damage_callback is None:
-                 self._damage_fired = False
+                self._damage_fired = False
             elif not hasattr(self, "_damage_fired") or not self._damage_fired:
                 if p >= 0.5:
                     self.damage_callback("sword_slash")
@@ -513,7 +513,7 @@ class SwordWindow(QWidget):
             char_count = line_end_char
 
         char_count = 0
-        if self.is_attacking == False:
+        if not self.is_attacking:
             painter.setPen(QColor(255, 255, 255))
         else:
             painter.setPen(QColor(255, 130, 130, 100))

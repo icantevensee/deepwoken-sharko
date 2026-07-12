@@ -9,6 +9,9 @@ Centralized configuration for the Sharko game including:
 - Windows API constants
 """
 
+import html
+
+
 def _decode_escapes(s):
     """Decode escape sequences and HTML entities in strings"""
     if not isinstance(s, str):
@@ -19,19 +22,19 @@ def _decode_escapes(s):
         except Exception:
             decoded = s
         try:
-            import html
             decoded = html.unescape(decoded)
         except Exception:
             pass
         return decoded
     return s
 
+
 class SharkoConstants:
     """Global constants and configuration for the Sharko game."""
 
-    #Debug Mode Flag - todo: visualizes ram and cpu over time in seperate window + currently alive large objects, Catch the tiny memory leaks.
+    # Debug Mode Flag - todo: visualizes ram and cpu over time in seperate window + currently alive large objects, Catch the tiny memory leaks.
     DEBUG = False
-    
+
     # Animation/timing
     FADE_STEP                   = 1
     ANIMATION_DELAY             = 500
@@ -41,7 +44,7 @@ class SharkoConstants:
     REMOVAL_ANIMATION_DELAY     = 3800
     INACTIVE_TIME_REQUIREMENT   = 60000
     INTER_ATTACK_IDLE_TIME      = 1000
-    
+
     # Window
     WINDOW_SIZE_X               = 357
     WINDOW_SIZE_Y               = 342
@@ -52,7 +55,6 @@ class SharkoConstants:
     TEXT_OFFSET_LEFT            = 97
     TEXT_OFFSET_RIGHT           = 9
 
-    
     # General paths
     CURRENT_IMAGES_PATH         = "assets/sharko/"
     IMAGES_PATH                 = "assets/sharko/"
@@ -72,32 +74,31 @@ class SharkoConstants:
     PARRY_OVERLAY_PATH          = "assets/UI/parry_overlay.png"
     PARRY_COOLDOWN_ICON_PATH    = "assets/UI/boss_bar_skull.png"
     ICON_FRAME_PATH             = "assets/UI/parry_overlay.png"
-    
+
     # Sounds
-    END_TALKING_SOUND           = "assets/sounds/end_talking.mp3"
-    START_TALKING_SOUND         = "assets/sounds/start_talking.mp3"
-    CLASH_SOUND                 = "assets/sounds/Clash.mp3"
-    GREETING_SOUND              = "assets/sounds/greeting.mp3"
-    ANSWER_SOUND                = "assets/sounds/answer_question.mp3"
-    
+    END_TALKING_SOUND           = "assets/sounds/end_talking.wav"
+    START_TALKING_SOUND         = "assets/sounds/start_talking.wav"
+    CLASH_SOUND                 = "assets/sounds/Clash.wav"
+    GREETING_SOUND              = "assets/sounds/greeting.wav"
+    ANSWER_SOUND                = "assets/sounds/answer_question.wav"
+
     # Combat sfx
-    BLOCK_ATTEMPT_SOUND         = "assets/sounds/fight-sfx/Block_Attempt.mp3"
-    PARRY_SOUND                 = "assets/sounds/fight-sfx/Parry.mp3"
-    BLOCK_SOUND                 = "assets/sounds/fight-sfx/Block.mp3"
-    HIT_SOUND                   = "assets/sounds/fight-sfx/Hit.mp3"
+    BLOCK_ATTEMPT_SOUND         = "assets/sounds/fight-sfx/Block_Attempt.wav"
+    PARRY_SOUND                 = "assets/sounds/fight-sfx/Parry.wav"
+    BLOCK_SOUND                 = "assets/sounds/fight-sfx/Block.wav"
+    HIT_SOUND                   = "assets/sounds/fight-sfx/Hit.wav"
 
     # fight sfx
-    ROAR_SOUND_1                = "assets/sounds/fight-sfx/Roar1.mp3"
-    ROAR_SOUND_2                = "assets/sounds/fight-sfx/Roar2.mp3"
-    DREAD_BREATH_SOUND          = "assets/sounds/fight-sfx/Breath.mp3"
+    ROAR_SOUND_1                = "assets/sounds/fight-sfx/Roar1.wav"
+    ROAR_SOUND_2                = "assets/sounds/fight-sfx/Roar2.wav"
+    DREAD_BREATH_SOUND          = "assets/sounds/fight-sfx/Breath.wav"
 
     # Fight constants
     MAX_BOSS_HEALTH             = 2000
     MAX_PLAYER_HEALTH           = 500
     MAX_POSTURE                 = 20
-    POSTURE_PARRY_COST          = 4.0
-    POSTURE_DECAY_PER_SECOND    = 0.04
-    POSTURE_BREAK_COOLDOWN      = 3.0
+    POSTURE_PARRY_COST          = 4
+    POSTURE_BREAK_COOLDOWN      = 3
     M1_DAMAGE                   = 30
 
     # Attack statistics
@@ -110,15 +111,14 @@ class SharkoConstants:
         "sword_slash": {"damage": 25, "posture": 3},
     }
 
-
     # Fonts
-    FONT                        = r"assets/fonts/TheFont.ttf" #Pillow format
-    BOSS_FONT                   = "assets/fonts/Boss_Font.otf" #PyQ5 format
-    
+    SPEECH_FONT             = "assets/fonts/TheFont.ttf"
+    BOSS_FONT               = "assets/fonts/Boss_Font.otf"
+
     # COM interfaces
     CLSID_ShellWindows      = "{9BA05972-F6A8-11CF-A442-00A0C90A8F39}"
     IID_IFolderView         = "{CDE725B0-CCC9-4519-917E-325D72FAB4CE}"
-    
+
     # Windows API constants
     LVS_EX_SNAPTOGRID       = 0x00080000
     WDA_EXCLUDEFROMCAPTURE  = 0x00000011
@@ -138,29 +138,29 @@ class SharkoConstants:
 
     # Windows Registry Paths
     PUSH_NOTIFICATIONS_REG_PATH = r"Software\Microsoft\Windows\CurrentVersion\PushNotifications"
-    
+
     # Movement & Physics
     WALKSPEED = 230  # Pixels per second
-    
+
     # Combat Mechanics
     PARRY_WINDOW            = 0.3  # seconds
     PARRY_BLOCK_COOLDOWN    = 0.75
     ATTACK_COOLDOWN    = 0.75
-    
+
     # UI & Text Rendering
     SPRITE_WIDTH = 165
     SPRITE_HEIGHT = 165
-    QUESTION_BOX_WIDTH          = 255
-    QUESTION_BOX_HEIGHT         = 140
+    QUESTION_BOX_WIDTH          = 250
+    QUESTION_BOX_HEIGHT         = 150
     QUESTION_BOX_TOP_Y          = 9
-    QUESTION_BOX_OPTION1_Y      = 96
-    QUESTION_BOX_OPTION2_Y      = 126
-    QUESTION_BOX_OPTION_HEIGHT  = 30
+    QUESTION_BOX_OPTION1_Y      = 90
+    QUESTION_BOX_OPTION2_Y      = 120
+    QUESTION_BOX_OPTION_HEIGHT  = 40
     QUESTION_TEXT_HEIGHT        = 80
-    TEXT_RENDER_PADDING         = 0
-    TEXT_LINE_SPACING           = 8
-    FONT_SIZE_MAX               = 72
-    FONT_SIZE_MIN               = 8
+    TEXT_RENDER_PADDING         = 3
+    TEXT_LINE_SPACING           = 3
+    FONT_SIZE_MAX               = 80
+    FONT_SIZE_MIN               = 5
     FRAME_DELAY_MS              = 16  # Milliseconds between animation frames
 
     TOAST_TEXT = {
@@ -201,8 +201,8 @@ class SharkoConstants:
     Questions = []
     for index, line in enumerate(question_lines):
         decoded = _decode_escapes(line.strip())
-        current_question = int(index/5)
-        current_line  = index - current_question*5
+        current_question = int(index / 5)
+        current_line  = index - current_question * 5
         if current_line == 0:
             Questions.append([])
         Questions[current_question].append(decoded)

@@ -30,6 +30,7 @@ from PyQt5.QtWidgets import QWidget
 
 from constants import SharkoConstants
 
+
 class Laser:
     """Laser beam visual effect with fade in/out animation."""
 
@@ -80,6 +81,20 @@ class Particle:
         "db",
     ]
 
+    PARTICLE_UPDATE_MAP = {
+        "sparkle": lambda self, dt: Particle.update_sparkle(self, dt),
+        "ring": lambda self, dt: Particle.update_ring(self, dt),
+        "blood": lambda self, dt: Particle.update_blood(self, dt),
+        "blood_sharko": lambda self, dt: Particle.update_blood(self, dt),
+        "laser_square": lambda self, dt: Particle.update_laser(self, dt),
+        "star": lambda self, dt: Particle.update_star(self, dt),
+        "unparryable_glyph": lambda self, dt: Particle.update_glyph(self, dt),
+        "unblockable_glyph": lambda self, dt: Particle.update_glyph(self, dt),
+        "unparryable_outline": lambda self, dt: Particle.update_outline(self, dt),
+        "unblockable_outline": lambda self, dt: Particle.update_outline(self, dt),
+        "falling_sharko": lambda self, dt: Particle.update_falling_sharko(self, dt),
+    }
+
     def __init__(self, x, y, p_type, pixmap=None):
         """Initialize a particle with type-specific properties and physics.
         """
@@ -89,15 +104,26 @@ class Particle:
         self.alpha = 1.0
         self.elapsed = 0.0
 
+        #  Baseline init
+        self.vel = QPointF(0.0, 0.0)
+        self.gravity = QPointF(0.0, 0.0)
+        self.friction = 1.0
+        self.rotation = 0.0
+        self.rot_speed = 0.0
+        self.scale = 1.0
+        self.size = 0.0
+        self.hitbox_width = 0.0
+        self.hitbox_height = 0.0
+        self.db = False
+
         if p_type == "sparkle":
             self.scale      = 0.0
-            self.vel        = QPointF(0, 0)
             self.friction   = 1.0
             self.rotation   = random.uniform(0, 360)
         elif p_type == "ring":
+            self.alpha = 1.25
             self.scale      = random.uniform(0.12, 0.18)
             self.rot_speed  = random.uniform(8, 15) * random.choice([-1, 1])
-            self.vel        = QPointF(0, 0)
             self.friction   = 1.0
             self.rotation   = random.uniform(0, 360)
         elif p_type == "spark":
@@ -136,90 +162,93 @@ class Particle:
             self.scale      = 0.0
             self.rotation   = random.uniform(0, random.uniform(0, 360))
             self.rot_speed  = random.uniform(-15, 15)
-            self.vel        = QPointF(0, 0)
             self.friction   = 0.96
         elif p_type in ("unparryable_glyph", "unblockable_glyph"):
-            self.scale      = 0.0
-            self.rotation   = 0
-            self.rot_speed  = 0.0
-            self.vel        = QPointF(0, 0)
             self.friction   = 0.96
         elif p_type in ("unparryable_outline", "unblockable_outline"):
-            self.scale      = 0.0
             self.rotation   = random.uniform(0, 360)
             self.rot_speed  = 5
-            self.vel        = QPointF(0, 0)
             self.friction   = 0.96
         elif p_type == "falling_sharko":
             self.db         = False
-            self.rotation   = 0
-            self.rot_speed  = 0
             self.friction   = 1
-            self.hitbox_width = 0
-            self.hitbox_height = 0
+
+    def update_sparkle(self, dt):
+        if self.elapsed < 0.06:
+            self.scale += 0.15
+        else:
+            self.scale -= 0.03
+        self.alpha = max(0.0, min(1.0, self.scale * 6.0))
+
+    def update_ring(self, dt):
+        self.rotation += self.rot_speed
+        self.scale += 0.005
+        self.alpha -= 0.08
+
+    def update_blood(self, dt):
+        self.rotation += self.rot_speed
+        self.alpha -= 0.03
+
+    def update_laser(self, dt):
+        self.rotation += self.rot_speed
+        self.alpha -= 0.04
+
+    def update_star(self, dt):
+        self.rotation += self.rot_speed
+        if self.elapsed < 0.12:
+            self.scale += 0.08
+        else:
+            self.alpha -= 0.03
+            self.scale -= 0.002
+
+    def update_glyph(self, dt):
+        self.rotation += self.rot_speed
+        if self.elapsed < 0.07:
+            self.scale += 0.075
+        else:
+            self.alpha -= 0.04
+            self.scale += 0.002
+
+    def update_outline(self, dt):
+        self.rotation += self.rot_speed
+        if self.elapsed < 0.07:
+            self.scale += 0.075
+        elif self.elapsed > 0.4:
+            self.scale -= 0.025
+        if self.scale <= 0:
+            self.alpha = 0.0
+
+    def update_falling_sharko(self, dt):
+        if self.elapsed >= 2:
+            self.alpha = 0.0
+
+    def update_default(self, dt):
+        self.alpha -= 0.05
 
     def update(self, dt):
-        """Update particle physics, position, and animation properties.
-        """
         self.elapsed += dt
-        if hasattr(self, "gravity"):
-            self.vel += self.gravity
+
+        self.vel += self.gravity
         self.pos += self.vel
-        self.vel *= self.friction if hasattr(self, "friction") else 1.0
+        self.vel *= self.friction
 
-        if self.p_type == "sparkle":
-            if self.elapsed < 0.06:
-                self.scale  += 0.15
-            else:
-                self.scale  -= 0.03
-            self.alpha = max(0, min(1.0, self.scale * 6.0))
-        elif self.p_type == "ring":
-            self.rotation += self.rot_speed
-            self.scale      += 0.005
-            self.alpha      -= 0.08
-        elif self.p_type in ("blood", "blood_sharko"):
-            self.rotation += self.rot_speed
-            self.alpha      -= 0.03
-        elif self.p_type == "laser_square":
-            self.rotation   += self.rot_speed
-            self.alpha      -= 0.04
-        elif self.p_type == "star":
-            self.rotation += self.rot_speed
-            if self.elapsed < 0.12:
-                self.scale  += 0.08
-            else:
-                self.alpha  -= 0.03
-                self.scale  -= 0.002
-        elif self.p_type in ("unparryable_glyph", "unblockable_glyph"):
-            self.rotation += self.rot_speed
-            if self.elapsed < 0.07:
-                self.scale  += 0.075
-            else:
-                self.alpha  -= 0.04
-                self.scale  += 0.002
-        elif self.p_type in ("unparryable_outline", "unblockable_outline"):
-            self.rotation += self.rot_speed
-            if self.elapsed < 0.07:
-                self.scale  += 0.075
-            elif self.elapsed > 0.4:
-                self.scale  -= 0.025
-            if self.scale <= 0:
-                self.alpha  = 0
-        elif self.p_type == "falling_sharko":
-            if self.elapsed >= 2:
-                self.alpha  = 0
-        else:
-            self.alpha      -= 0.05
-
+        self.PARTICLE_UPDATE_MAP.get(self.p_type, Particle.update_default)(self, dt)
         return self.alpha > 0
 
 
 class VFXManager(QWidget):
-    # Cache QColor objects to avoid creating them every frame
-    _COLOR_BLOOD = QColor(150, 0, 0)
-    _COLOR_BLOOD_SHARKO = QColor(18, 117, 64)
-    _COLOR_BLOCK = QColor(255, 255, 0)
-    _COLOR_LASER = QColor(0, 180, 255)
+    PARTICLE_COLOR_MAP = {
+        "blood": QColor(150, 0, 0),
+        "blood_sharko": QColor(18, 117, 64),
+        "laser_square": QColor(0, 180, 255),
+        "block": QColor(255, 255, 0)
+    }
+    RECT_PARTICLE_DRAW_MAP = {
+        "blood": lambda self, p, painter: VFXManager.draw_primitive_rect(self, p, painter),
+        "blood_sharko": lambda self, p, painter: VFXManager.draw_primitive_rect(self, p, painter),
+        "laser_square": lambda self, p, painter: VFXManager.draw_primitive_rect(self, p, painter),
+        "block": lambda self, p, painter: VFXManager.draw_primitive_rect(self, p, painter),
+    }
 
     def __init__(self, damage_callback=None, screen_shaker=None):
         super().__init__()
@@ -246,7 +275,7 @@ class VFXManager(QWidget):
         else:
             self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self._load_assets()
-        self.setGeometry(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)-1)
+        self.setGeometry(0, 0, user32.GetSystemMetrics(0), user32.GetSystemMetrics(1) - 1)
         self.show()
         self.raise_()
         self.timer = QTimer(self)
@@ -286,10 +315,10 @@ class VFXManager(QWidget):
         if laser_id not in self.lasers:
             self.lasers[laser_id] = Laser(x, y, angle, color, start_offset=offset)
         else:
-            l = self.lasers[laser_id]
-            l.origin, l.angle, l.color, l.start_offset = (QPointF(float(x), float(y)), angle, color, offset)
-            if l.state == "fading_out":
-                l.state = "fading_in"
+            lazer = self.lasers[laser_id]
+            lazer.origin, lazer.angle, lazer.color, lazer.start_offset = (QPointF(float(x), float(y)), angle, color, offset)
+            if lazer.state == "fading_out":
+                lazer.state = "fading_in"
 
     def remove_laser(self, laser_id):
         if laser_id in self.lasers:
@@ -346,7 +375,7 @@ class VFXManager(QWidget):
 
         # In-place particle filtering to avoid list recreation
         write_idx = 0
-        for i, p in enumerate(self.particles):
+        for p in self.particles:
             if p.update(0.016):
                 # Check collision for falling_sharko particles
                 if p.p_type == "falling_sharko" and not p.db and self.damage_callback:
@@ -429,25 +458,20 @@ class VFXManager(QWidget):
             painter.translate(p.pos.x() + offset_x, p.pos.y() + offset_y)
             painter.rotate(p.rotation)
 
-            if p.p_type in ("blood", "blood_sharko"):
-                color = self._COLOR_BLOOD if p.p_type == "blood" else self._COLOR_BLOOD_SHARKO
-                painter.setBrush(color)
-                painter.setPen(Qt.NoPen)
-                s = p.size
-                half_s = s / 2
-                painter.drawRect(QRectF(-half_s, -half_s, s, s))
-            elif p.p_type in ("block", "laser_square"):
-                color = self._COLOR_LASER if p.p_type == "laser_square" else self._COLOR_BLOCK
-                painter.setBrush(color)
-                painter.setPen(Qt.NoPen)
-                s = p.size
-                half_s = s / 2
-                painter.drawRect(QRectF(-half_s, -half_s, s, s))
-            else:
-                w, h = p.pixmap.width() * p.scale, p.pixmap.height() * p.scale
-                half_w, half_h = w / 2, h / 2
-                painter.drawPixmap(QRectF(-half_w, -half_h, w, h), p.pixmap, QRectF(p.pixmap.rect()))
+            self.RECT_PARTICLE_DRAW_MAP.get(p.p_type, VFXManager.draw_textured_pixmap)(self, p, painter)
             painter.restore()
+
+    def draw_primitive_rect(self, p, painter):
+        color = self.PARTICLE_COLOR_MAP[p.p_type]
+        painter.setBrush(color)
+        painter.setPen(Qt.NoPen)
+        s = p.size
+        half_s = s / 2
+        painter.drawRect(QRectF(-half_s, -half_s, s, s))
+
+    def draw_textured_pixmap(self, p, painter):
+        w, h = p.pixmap.width() * p.scale, p.pixmap.height() * p.scale
+        painter.drawPixmap(QRectF(-w / 2, -h / 2, w, h), p.pixmap, QRectF(p.pixmap.rect()))
 
 
 class WarningInstance:
@@ -536,7 +560,7 @@ class MultiWarningOverlay(QWidget):
             | Qt.Tool
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)-1)
+        self.setGeometry(0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1) - 1)
         self.show()
 
         self.active_warnings = []
@@ -587,8 +611,8 @@ class MultiWarningOverlay(QWidget):
 class ScreenShaker(QWidget):
     def __init__(self):
         super().__init__()
-        import dxcam #uses a LOT of memory, so only import if it's actually ever used. Large ~25 mb decrease in ram if not imported.
-    
+        import dxcam  # Uses a LOT of memory, so only import if it's actually ever used. Large ~25 mb decrease in ram if not imported.
+
         user32 = windll.user32
         user32.SetWindowDisplayAffinity.argtypes = [c_void_p, c_uint32]
         user32.SetWindowDisplayAffinity.restype = c_bool
@@ -604,9 +628,10 @@ class ScreenShaker(QWidget):
             | Qt.Tool
         )
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(0, 0, self.width, self.height-1)
+        self.setGeometry(0, 0, self.width, self.height - 1)
         user32.SetWindowDisplayAffinity(int(self.winId()), SharkoConstants.WDA_EXCLUDEFROMCAPTURE)
-        self.captured_pixmap = None
+        self.captured_image = None
+        self.current_frame = None
         self.intensity = 0
         self.start_time = 0
         self.duration = 0
@@ -636,10 +661,20 @@ class ScreenShaker(QWidget):
 
         frame = self.camera.grab_view()
         if frame is not None:
+            # 1. Keep a strong reference to the frame array so its memory address stays valid
+            self.current_frame = frame
+
             height, width, channels = frame.shape
             bytes_per_line = channels * width
-            q_img = QImage(frame.data, width, height, bytes_per_line, QImage.Format_ARGB32_Premultiplied)
-            self.captured_pixmap = QPixmap.fromImage(q_img)
+
+            # 2. Build the zero-copy QImage wrapper. Use Format_ARGB32 to match raw DXcam BGRA.
+            self.captured_image = QImage(
+                self.current_frame.data,
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format_ARGB32
+            )
 
         progress = elapsed / self.duration
 
@@ -655,7 +690,7 @@ class ScreenShaker(QWidget):
         sin_wave = math.sin(t_ms * speed_x) * current_intensity
         cos_wave = math.cos(t_ms * speed_y) * current_intensity
         rand_noise_x = random.uniform(-current_intensity, current_intensity) * randomness
-        rand_noise_y =  random.uniform(-current_intensity, current_intensity) * randomness
+        rand_noise_y = random.uniform(-current_intensity, current_intensity) * randomness
 
         self.offset_x = int(sin_wave + rand_noise_x)
         self.offset_y = int(cos_wave + rand_noise_y)
@@ -665,18 +700,20 @@ class ScreenShaker(QWidget):
 
     def stop_and_reset(self):
         self.loop_timer.stop()
-        self.captured_pixmap = None
+        self.captured_image = None
+        self.current_frame = None
         self.offset_x = 0
         self.offset_y = 0
         self.hide()
+
     def paintEvent(self, event):
         painter = QPainter(self)
-        if not self.captured_pixmap:
+        if not self.captured_image:
             painter.fillRect(0, 0, self.width, self.height, Qt.transparent)
             return
+
         painter.fillRect(0, 0, self.width, self.height, Qt.black)
-        painter.drawPixmap(self.offset_x, self.offset_y, self.captured_pixmap)
-        painter.end()
+        painter.drawImage(self.offset_x, self.offset_y, self.captured_image)
 
     def deinitialize(self):
         if hasattr(self, "loop_timer") and self.loop_timer:
@@ -686,8 +723,8 @@ class ScreenShaker(QWidget):
         if hasattr(self, "camera") and self.camera:
             self.camera.release()
             self.camera = None
-        self.captured_pixmap = None
-        if hasattr(self, "particles_manager"):
-            self.particles_manager = None
+        self.particles_manager = None
+        self.captured_image = None
+        self.current_frame = None
         self.hide()
         self.deleteLater()

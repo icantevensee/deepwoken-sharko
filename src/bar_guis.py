@@ -22,7 +22,6 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import (
     QColor,
     QFont,
-    QFontDatabase,
     QPainter,
     QPainterPath,
     QPen,
@@ -39,7 +38,7 @@ from img_utils import ImgUtils
 class ScalableHealthBar(QWidget):
     """Scalable health bar widget for boss battles with animations and effects."""
 
-    def __init__(self, parent=None, bar_height_scale=0.18, target_obj = None):
+    def __init__(self, parent=None, bar_height_scale=0.18, target_obj=None):
         """Initialize the health bar with transparent background and animations."""
         super().__init__(parent)
 
@@ -80,12 +79,12 @@ class ScalableHealthBar(QWidget):
         self.parry_cooldown_icon_img    = QPixmap(SharkoConstants.PARRY_COOLDOWN_ICON_PATH)
         self.bb_crop_border             = 16
         self.pb_crop_border             = 13
-        self.bb_percentage              = 1.0
-        self.current_bb_percentage      = 1.0
-        self.pb_percentage              = 1.0
-        self.current_pb_percentage      = 1.0
-        self.plrb_percentage            = 1.0
-        self.current_plrb_percentage    = 1.0
+        self.bb_percentage              = 1
+        self.current_bb_percentage      = 1
+        self.pb_percentage              = 1
+        self.current_pb_percentage      = 1
+        self.plrb_percentage            = 1
+        self.current_plrb_percentage    = 1
         self.bb_x_offset                = 0
         self.bb_y_offset                = 0
         self.bar_height_scale           = bar_height_scale
@@ -98,13 +97,7 @@ class ScalableHealthBar(QWidget):
         self._bb_pos_animation = QPropertyAnimation(self, b"boss_bar_anim_pos")
         self._bb_pos_animation.setDuration(600)
         self._bb_pos_animation.setEasingCurve(QEasingCurve.OutCubic)
-
-        font_id = QFontDatabase.addApplicationFont(SharkoConstants.BOSS_FONT)
-        if font_id != -1:
-            family = QFontDatabase.applicationFontFamilies(font_id)[0]
-            self.custom_font = QFont(family, 22)
-        else:
-            self.custom_font = QFont("Arial", 22)
+        self.custom_font = QFont(target_obj.BOSS_FONT_FAMILY, 22)
         self.show()
 
     # --- ANIMATION PROPERTY ---
@@ -121,8 +114,8 @@ class ScalableHealthBar(QWidget):
         self._bb_pos_animation.stop()
 
         self.show()
-        self._bb_pos_animation.setStartValue(QPoint(0, int(-self.height()*self.bar_height_scale*1.6)))
-        self._bb_pos_animation.setEndValue(QPoint(0, max(8, int(self.height() * self.bar_height_scale*1.6))))
+        self._bb_pos_animation.setStartValue(QPoint(0, int(-self.height() * self.bar_height_scale * 1.6)))
+        self._bb_pos_animation.setEndValue(QPoint(0, max(8, int(self.height() * self.bar_height_scale * 1.6))))
         self._bb_pos_animation.start()
 
     def slide_out_to_hide(self):
@@ -130,18 +123,18 @@ class ScalableHealthBar(QWidget):
         self.animation_timer.stop()
 
         self._bb_pos_animation.setStartValue(self._boss_bar_canvas_offset)
-        self._bb_pos_animation.setEndValue(QPoint(0, int(-self.height()*self.bar_height_scale*1.6)))
+        self._bb_pos_animation.setEndValue(QPoint(0, int(-self.height() * self.bar_height_scale * 1.6)))
 
         try:
             self._bb_pos_animation.finished.disconnect()
-        except:
+        except Exception:
             pass
 
         def cleanup_after_slide():
             self.animation_timer.stop()
             try:
                 self._bb_pos_animation.finished.disconnect()
-            except:
+            except Exception:
                 pass
             self.animation_timer.deleteLater()
             self.animation_timer = None
@@ -153,9 +146,11 @@ class ScalableHealthBar(QWidget):
     def update_health_fill(self):
         """Update the health fill animation frame."""
         self.update()
-        if self.target_obj.posture > 0 and not self.target_obj.blocking and time.time() > self.target_obj.posture_break_cooldown_until:
-            self.target_obj.posture = max(0, self.target_obj.posture - 0.001)
-        self.pb_percentage = self.target_obj.posture/self.target_obj.MAX_POSTURE
+        current_time = time.time()
+        time_held = current_time - self.target_obj.parry_press_time if self.target_obj.f_key_held else 0
+        if self.target_obj.posture > 0 and time_held < SharkoConstants.PARRY_WINDOW and current_time > self.target_obj.posture_break_cooldown_until:
+            self.target_obj.posture = max(0, self.target_obj.posture - 0.003)
+        self.pb_percentage = self.target_obj.posture / self.target_obj.MAX_POSTURE
         if abs(self.bb_percentage - self.current_bb_percentage) < 0.001:
             self.current_bb_percentage = self.bb_percentage
         if abs(self.pb_percentage - self.current_pb_percentage) < 0.001:
@@ -190,14 +185,14 @@ class ScalableHealthBar(QWidget):
         bg_y = int(h * 0.125) + y_offset
         bg_w = w - cap_w
         bg_h = int(h * 0.75)
-        
+
         bg_rect = QRect(bg_x, bg_y, bg_w, bg_h)
         painter.fillRect(bg_rect, QColor(63, 62, 72))
 
         # Foreground fill
         self.current_bb_percentage += (self.bb_percentage - self.current_bb_percentage) * 0.3
         fill_w = int(bg_w * self.current_bb_percentage)
-        
+
         fill_rect = QRect(bg_x, bg_y, fill_w, bg_h)
         painter.fillRect(fill_rect, QColor(118, 139, 153))
 
@@ -221,7 +216,7 @@ class ScalableHealthBar(QWidget):
         # Text
         boss_name = "DESTROYMAN III"
         painter.setFont(self.custom_font)
-        
+
         metrics = painter.fontMetrics()
         text_width = metrics.horizontalAdvance(boss_name)
         text_x = x_offset + (w - text_width) // 2
@@ -235,10 +230,9 @@ class ScalableHealthBar(QWidget):
         painter.strokePath(path, pen)
         painter.fillPath(path, QColor(255, 255, 255))
 
-
     def _paint_posture_bar(self, painter):
-        h = int(2 * self.height() // (16/5))
-        y_offset = int(self.height() // (16/3))
+        h = int(2 * self.height() // (16 / 5))
+        y_offset = int(self.height() // (16 / 3))
         x_offset = self._boss_bar_canvas_offset.y()
 
         sw, sh = self.pb_img.width(), self.pb_img.height()
@@ -248,7 +242,7 @@ class ScalableHealthBar(QWidget):
         max_fill_h = h - cap_h
 
         # Background Rect
-        bg_rect = QRect(int(w * 0.125) + x_offset, cap_h//2 + y_offset, int(w * 0.75), max_fill_h)
+        bg_rect = QRect(int(w * 0.125) + x_offset, cap_h // 2 + y_offset, int(w * 0.75), max_fill_h)
         painter.fillRect(bg_rect, QColor(63, 62, 72))
 
         # Foreground Fill
@@ -256,13 +250,13 @@ class ScalableHealthBar(QWidget):
         fill_h = int(max_fill_h * self.current_pb_percentage)
         
         # Invert the fill starting y to make it fill from bottom to top
-        fill_y = cap_h//2 + y_offset + (max_fill_h - fill_h)
+        fill_y = cap_h // 2 + y_offset + (max_fill_h - fill_h)
         fill_rect = QRect(int(w * 0.125) + x_offset, fill_y, int(w * 0.75), fill_h)
         painter.fillRect(fill_rect, QColor(218, 183, 75))
 
         # Border
-        mid_slice_y = y_offset + cap_h//2
-        bot_slice_y = mid_slice_y + max_fill_h - cap_h//2
+        mid_slice_y = y_offset + cap_h // 2
+        bot_slice_y = mid_slice_y + max_fill_h - cap_h // 2
         painter.drawPixmap(QRect(x_offset, y_offset, w, cap_h), self.pb_img, QRect(0, 0, sw, src_b))
         painter.drawPixmap(QRect(x_offset, mid_slice_y, w, max_fill_h), self.pb_img, QRect(0, src_b, sw, sh - 2 * src_b))
         painter.drawPixmap(QRect(x_offset, bot_slice_y, w, cap_h), self.pb_img, QRect(0, sh - src_b, sw, src_b))
@@ -271,7 +265,7 @@ class ScalableHealthBar(QWidget):
         mw = int(self.pb_pin_img.width() * self.scale)
         for p in [0.2, 0.4, 0.6, 0.8]:
             # Pins calculated relative to the inner canvas height and inverted to align with a bottom-up scale
-            m_y = int(p * max_fill_h) - mh // 2 + cap_h//2
+            m_y = int(p * max_fill_h) - mh // 2 + cap_h // 2
             painter.drawPixmap(QRect(x_offset, m_y + y_offset, mw, mh), self.pb_pin_img)
 
     def _paint_player_health_bar(self, painter):
@@ -286,7 +280,7 @@ class ScalableHealthBar(QWidget):
         max_fill_h = h - cap_h
 
         # Background Rect
-        bg_rect = QRect(int(w * 0.125) + x_offset, cap_h//2 + y_offset, int(w * 0.75), max_fill_h)
+        bg_rect = QRect(int(w * 0.125) + x_offset, cap_h // 2 + y_offset, int(w * 0.75), max_fill_h)
         painter.fillRect(bg_rect, QColor(63, 62, 72))
 
         # Foreground Fill
@@ -294,13 +288,13 @@ class ScalableHealthBar(QWidget):
         fill_h = int(max_fill_h * self.current_plrb_percentage)
         
         # Invert the fill starting y to make it fill from bottom to top
-        fill_y = cap_h//2 + y_offset + (max_fill_h - fill_h)
+        fill_y = cap_h // 2 + y_offset + (max_fill_h - fill_h)
         fill_rect = QRect(int(w * 0.125) + x_offset, fill_y, int(w * 0.75), fill_h)
         painter.fillRect(fill_rect, QColor(204, 111, 48))
 
         # Border
-        mid_slice_y = y_offset + cap_h//2
-        bot_slice_y = mid_slice_y + max_fill_h - cap_h//2
+        mid_slice_y = y_offset + cap_h // 2
+        bot_slice_y = mid_slice_y + max_fill_h - cap_h // 2
         painter.drawPixmap(QRect(x_offset, y_offset, w, cap_h), self.plrb_img, QRect(0, 0, sw, src_b))
         painter.drawPixmap(QRect(x_offset, mid_slice_y, w, max_fill_h), self.plrb_img, QRect(0, src_b, sw, sh - 2 * src_b))
         painter.drawPixmap(QRect(x_offset, bot_slice_y, w, cap_h), self.plrb_img, QRect(0, sh - src_b, sw, src_b))
@@ -309,5 +303,5 @@ class ScalableHealthBar(QWidget):
         mw = int(self.plrb_pin_img.width() * self.scale)
         for p in [0.2, 0.4, 0.6, 0.8]:
             # Pins calculated relative to the inner canvas height and inverted to align with a bottom-up scale
-            m_y = int(p * max_fill_h) - mh // 2 + cap_h//2
+            m_y = int(p * max_fill_h) - mh // 2 + cap_h // 2
             painter.drawPixmap(QRect(x_offset, m_y + y_offset, mw, mh), self.plrb_pin_img)

@@ -1,108 +1,125 @@
 """
 Utilities for image manipulation, including text rendering and format conversion.
 """
+import numpy as np
 
-from PIL import         Image, ImageDraw, ImageFont
-from PyQt5.QtGui import QImage, QPixmap, QPainter
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QFont, QFontMetricsF
+from PyQt5.QtCore import Qt
 
 
 class ImgUtils:
+
     def _render_text_image(self, text, size):
-        img = Image.new("RGBA", (size[0], size[1]), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
+        """Render long multiline text into an RGBA QImage with precise layout fitting and zero RAM leakage."""
 
-        base_font_path = self.FONT
-        padding = self.TEXT_RENDER_PADDING
-        line_spacing = self.TEXT_LINE_SPACING
+        width, height = size
+        img = QImage(width, height, QImage.Format_ARGB32)
+        img.fill(Qt.transparent)
 
-        for font_size in range(self.FONT_SIZE_MAX, self.FONT_SIZE_MIN, -1):
-            font = ImageFont.truetype(base_font_path, font_size)
+        painter = QPainter()
+        if not painter.begin(img):
+            return img
 
+        try:
+            painter.setRenderHint(QPainter.TextAntialiasing, True)
+
+            font = QFont(self.SPEECH_FONT_FAMILY)
+            padding = self.TEXT_RENDER_PADDING
+            line_spacing = self.TEXT_LINE_SPACING
+            allowable_w = width - padding * 2
+            allowable_h = height - padding * 2
+
+            best_font_size = None
+            best_lines = []
+
+            low = float(self.FONT_SIZE_MIN)
+            high = float(self.FONT_SIZE_MAX)
+            tolerance = 0.1
             words = text.split()
-            lines = []
-            cur = ""
-            for w in words:
-                test = (cur + " " + w).strip()
-                bbox = draw.multiline_textbbox((0, 0), test, font=font)
-                tw = bbox[2] - bbox[0]
-                if tw <= size[0] - padding * 2:
-                    cur = test
-                else:
-                    if cur:
-                        lines.append(cur)
-                    cur = w
-            if cur:
-                lines.append(cur)
 
-            allowable_w = size[0] - padding * 2
-            too_wide = False
-            for l in lines:
-                try:
-                    bbox = draw.multiline_textbbox((0, 0), l, font=font)
-                    if bbox[2] - bbox[0] > allowable_w:
-                        too_wide = True
+            while (high - low) > tolerance:
+                mid = (low + high) / 2.0
+                font.setPointSizeF(mid)
+
+                metrics = QFontMetricsF(font)
+                get_width = getattr(metrics, "horizontalAdvance", metrics.width)
+
+                lines = []
+                cur = ""
+                fit_failed = False
+
+                for w in words:
+                    if get_width(w) > allowable_w:
+                        fit_failed = True
                         break
-                except Exception:
-                    too_wide = True
-                    break
-            if too_wide:
-                continue
 
-            try:
-                ascent, descent = font.getmetrics()
-                single_line_h = ascent + descent
-            except Exception:
-                try:
-                    bbox = draw.textbbox((0, 0), "Mg", font=font)
-                    single_line_h = bbox[3] - bbox[1]
-                except Exception:
-                    single_line_h = 12
-            total_h = single_line_h * len(lines) + (len(lines) - 1) * line_spacing
-            if total_h <= size[1] - padding * 2:
-                y = 0
-                for i, l in enumerate(lines):
-                    bbox = draw.multiline_textbbox((0, 0), l, font=font)
-                    tw = bbox[2] - bbox[0]
-                    x = 0
-                    draw.text((x, y), l, font=font, fill=(0, 0, 0, 255))
-                    y += single_line_h + line_spacing
-                return img
+                    test = (cur + " " + w).strip()
+                    if get_width(test) <= allowable_w:
+                        cur = test
+                    else:
+                        if cur:
+                            lines.append(cur)
+                        cur = w
+                if cur:
+                    lines.append(cur)
 
-        draw.text((0, 0), text, font=ImageFont.load_default(), fill=(0, 0, 0, 255))
+                single_line_h = metrics.height()
+                total_h = (len(lines) * single_line_h) + ((len(lines) - 1) * line_spacing) if lines else 0
+
+                if total_h <= allowable_h and not fit_failed:
+                    best_font_size = mid
+                    best_lines = lines
+                    low = mid
+                else:
+                    high = mid
+
+            if best_font_size and best_lines:
+                font.setPointSizeF(best_font_size)
+                painter.setFont(font)
+                metrics = QFontMetricsF(font)
+                single_line_h = metrics.height()
+
+                y_cursor = padding + metrics.ascent()
+                for line in best_lines:
+                    painter.drawText(int(padding), int(y_cursor), line)
+                    y_cursor += single_line_h + line_spacing
+
+        finally:
+            painter.end()
+
         return img
 
-    @staticmethod
-    def _pil_to_qpixmap(pil_image):
-        """Convert PIL Image to QPixmap."""
-        if isinstance(pil_image, QPixmap):
-            return pil_image
+    def composite_on_base(self, base_pixmap, text_image):
+        """Composite a text QImage onto a base QPixmap at the speech box position."""
+        result = QPixmap(base_pixmap.size())
+        result.fill(Qt.transparent)
 
-        pil_image_rgb = pil_image.convert("RGBA")
-        data = pil_image_rgb.tobytes("raw", "RGBA")
-        qimg = QImage(data, pil_image_rgb.width, pil_image_rgb.height, QImage.Format_RGBA8888)
-        return QPixmap.fromImage(qimg)
+        painter = QPainter(result)
+        painter.drawPixmap(0, 0, base_pixmap)
 
-    @staticmethod
-    def _flip_image(pil_image):
-        """Flip PIL image horizontally and convert to QImage."""
-        flipped = pil_image.transpose(Image.FLIP_LEFT_RIGHT)
-        if flipped.mode == "RGBA":
-            data = flipped.tobytes("raw", "RGBA")
-            return QImage(data, flipped.width, flipped.height, QImage.Format_RGBA8888)
-        else:
-            data = flipped.tobytes("raw", "RGB")
-            return QImage(data, flipped.width, flipped.height, QImage.Format_RGBA8888)
-
-    def composite_on_base(self, base_img, text_img):
-        b = base_img.copy()
         if self.current_facing == "Left":
             x = self.TEXT_OFFSET_LEFT
         else:
             x = self.TEXT_OFFSET_RIGHT
         y = self.QUESTION_BOX_TOP_Y
-        b.paste(text_img, (x, y), text_img)
-        return b
-        
+
+        painter.drawImage(x, y, text_image)
+        painter.end()
+        return result
+
+    def composite_three(self, base_pixmap, q_img, opt1_img, opt2_img):
+        """Composites three Qimages onto a base pixmap for question and answers."""
+        result = QPixmap(base_pixmap.size())
+        result.fill(Qt.transparent)
+        painter = QPainter(result)
+        painter.drawPixmap(0, 0, base_pixmap)
+        x = self.TEXT_OFFSET_LEFT if self.current_facing == "Left" else self.TEXT_OFFSET_RIGHT
+        painter.drawImage(x, self.QUESTION_BOX_TOP_Y, q_img)
+        painter.drawImage(x, self.QUESTION_BOX_OPTION1_Y, opt1_img)
+        painter.drawImage(x, self.QUESTION_BOX_OPTION2_Y, opt2_img)
+        painter.end()
+        return result
+
     @staticmethod
     def tint_pixmap(pixmap, color):
         painter = QPainter(pixmap)
@@ -114,17 +131,21 @@ class ImgUtils:
         painter.end()
 
     @staticmethod
-    def _remove_black_background(img):
-        rgba_img = img.convert("RGBA")
-        pixel_data = rgba_img.getdata()
+    def _remove_black_background_qimg(qimg):
+        qimg = qimg.convertToFormat(QImage.Format_ARGB32)
+        h, w = qimg.height(), qimg.width()
 
-        cleaned_pixels = []
-        for pixel in pixel_data:
-            r, g, b, a = pixel
-            if r <= 15 and g <= 15 and b <= 15:
-                cleaned_pixels.append((0, 0, 0, 0))
-            else:
-                cleaned_pixels.append((r, g, b, 255))
+        ptr = qimg.bits()
+        ptr.setsize(h * w * 4)
 
-        rgba_img.putdata(cleaned_pixels)
-        return rgba_img
+        arr_32 = np.frombuffer(ptr, dtype=np.uint32)
+
+        blue  =  arr_32        & 0xFF
+        green = (arr_32 >> 8)  & 0xFF
+        red   = (arr_32 >> 16) & 0xFF
+
+        black_mask = (red <= 15) & (green <= 15) & (blue <= 15)
+
+        arr_32 &= 0x00FFFFFF
+        arr_32 |= np.where(black_mask, 0x00000000, 0xFF000000).astype(np.uint32)
+        return qimg

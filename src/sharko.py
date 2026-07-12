@@ -9,14 +9,12 @@ Core implementation of Sharko, the interactive desktop character with features:
 - Sound effects and particle effects
 - Customizable movie mode and UI states
 """
+
 from        ctypes import windll, byref, Structure, c_uint, sizeof, c_void_p
 
 import      random
 import      math
 import      time
-import      numpy as np
-
-import      pygame
 
 import      os
 import      sys
@@ -26,11 +24,10 @@ import      threading
 from pynput             import keyboard, mouse
 import keyboard as             blocker_keyboard
 
-from PIL                import Image
-from PyQt5.QtWidgets    import QApplication, QWidget, QVBoxLayout, QMenu,QWidgetAction
-from PyQt5.QtGui        import QPixmap, QPainter, QImage, QCursor
-from PyQt5.QtCore       import Qt, QTimer, QObject, pyqtSignal
-
+from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
+from PyQt5.QtWidgets    import QApplication, QWidget, QVBoxLayout, QMenu, QWidgetAction
+from PyQt5.QtGui        import QPixmap, QPainter, QTransform, QFontDatabase
+from PyQt5.QtCore       import Qt, QTimer, QObject, pyqtSignal, QUrl
 
 from bar_guis           import ScalableHealthBar
 from vfx_manager        import VFXManager, MultiWarningOverlay, ScreenShaker
@@ -60,28 +57,71 @@ except Exception:
     except Exception:
         pass
 
+
 class LASTINPUTINFO(Structure):
     _fields_ = [
         ("cbSize", c_uint),
         ("dwTime", c_uint),
     ]
 
+
 class InputSignalEmitter(QObject):
     """Thread-safe signal emitter for input events from pynput listeners."""
     f_pressed = pyqtSignal()
     f_released = pyqtSignal()
-    action_triggered = pyqtSignal(int, int, object)  # x, y, button
-    
+    action_triggered = pyqtSignal(int, int, object)
+
+
+class PitchedSound(QObject):
+    def __init__(self, wav_path, pitched=False, volume=1.0):
+        super().__init__()
+        self.pitched = pitched
+        self.volume = max(0.0, min(1.0, volume))
+        self.media_url = QUrl.fromLocalFile(wav_path)
+        self.active_players = set()
+
+    def play(self, volume=1.0):
+        """Plays the sound effect. Zero leaks, zero distortion."""
+        self.volume = max(0.0, min(1.0, volume))
+        if self.volume == 0:
+            return
+        player = QMediaPlayer(None, QMediaPlayer.LowLatency)
+        player.setMedia(QMediaContent(self.media_url))
+        player.setVolume(int(self.volume * 100))
+
+        if self.pitched:
+            player.setPlaybackRate(random.uniform(0.95, 1.05))
+        else:
+            player.setPlaybackRate(1.0)
+
+        player.stateChanged.connect(self._handle_state_change)
+
+        self.active_players.add(player)
+        player.play()
+
+    def stop(self):
+        """Instantly terminates all overlapping streams and clears RAM."""
+        for player in list(self.active_players):
+            player.stop()
+            player.deleteLater()
+        self.active_players.clear()
+
+    def _handle_state_change(self, state):
+        """Safe extraction tracking that deletes C++ objects natively."""
+        player = self.sender()
+        if state == QMediaPlayer.StoppedState and player in self.active_players:
+            self.active_players.remove(player)
+            player.deleteLater()
+
 
 class Sharko(SharkoConstants, IconManager):
     """Main functionality with animation, combat, and effects."""
-
     thrown_icons = set()
 
     def __init__(self):
         """Initialize Sharko character with paths to animation assets.
         """
-        #APPLICATION & GUI SETUP
+        # APPLICATION & GUI SETUP
         if not QApplication.instance():
             self.app = QApplication(sys.argv)
         else:
@@ -90,20 +130,32 @@ class Sharko(SharkoConstants, IconManager):
         self.app.setStyle(MenuStyle())
         self.window = QWidget()
         self.window.setWindowFlags(
-            Qt.FramelessWindowHint | 
-            Qt.WindowStaysOnTopHint | 
+            Qt.FramelessWindowHint |
+            Qt.WindowStaysOnTopHint |
             Qt.Tool
         )
         self.window.setAttribute(Qt.WA_TranslucentBackground)
 
-        #SCREEN & DISPLAY CONFIGURATION This won"t work if you have multiple monitors with different resolutions.
-        #It should be fine for now since the character will just spawn on the primary monitor and not be able to move to the others.
+        # FONT CONFIGURATIONS
+        SPEECH_FONT_ID          = QFontDatabase.addApplicationFont(self.SPEECH_FONT)
+        BOSS_FONT_ID            = QFontDatabase.addApplicationFont(self.BOSS_FONT)
+        if SPEECH_FONT_ID != -1:
+            self.SPEECH_FONT_FAMILY  = QFontDatabase.applicationFontFamilies(SPEECH_FONT_ID)[0]
+        else:
+            self.SPEECH_FONT_FAMILY  = "Arial"
+
+        if BOSS_FONT_ID != -1:
+            self.BOSS_FONT_FAMILY    = QFontDatabase.applicationFontFamilies(BOSS_FONT_ID)[0]
+        else:
+            self.BOSS_FONT_FAMILY    = "Arial"
+
+        #  SCREEN & DISPLAY CONFIGURATION
         screen = self.app.primaryScreen()
         self.screen_x = screen.geometry().width()
         self.screen_y = screen.geometry().height()
-        
+
         work_area_height = WindowsUtils.get_work_area_height()
-        thickness_vertical = self.screen_y - work_area_height  
+        thickness_vertical = self.screen_y - work_area_height
         taskbar_thickness = max(0, thickness_vertical)
 
         x = self.screen_x - self.WINDOW_SIZE_X
@@ -111,23 +163,21 @@ class Sharko(SharkoConstants, IconManager):
         self.x = x
         self.y = y
         self.window.setGeometry(x, y, self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
-        
-        #CHARACTER & STATE
+
+        # CHARACTER & STATE
         self.current_facing = "Right"
         self.current_state = "greeting"
         self.frame = 0
-        
-        #GAME STATE FLAGS
+
+        # GAME STATE FLAGS
         self.talking_disabled       = False
         self.cutscene_active        = False
         self.fight_mode_active      = False
         self.currently_moving       = False
-        
-        #AUDIO SYSTEM
+
+        # AUDIO SYSTEM
         self.sound_volume = 1
         self.sound_lock = threading.Lock()  # Thread-safe sound playback
-        pygame.mixer.init()  # Initialize once at startup
-        pygame.mixer.set_num_channels(16) #We won"t possibly have more than 16 sounds at the same time, right?
         self.sound_paths = {
             "end": [self.END_TALKING_SOUND, False],
             "start": [self.START_TALKING_SOUND, False],
@@ -142,76 +192,77 @@ class Sharko(SharkoConstants, IconManager):
             "roar_2": [self.ROAR_SOUND_2, False],
             "dread_breath": [self.DREAD_BREATH_SOUND, False],
         }
+
+        # Build dictionary mapping names directly to the custom memory sound object
         self.sounds_group = {
-            name: [pygame.mixer.Sound(obj[0]), obj[1]]
+            name: PitchedSound(obj[0], pitched=obj[1])
             for name, obj in self.sound_paths.items()
         }
-                
-        #MOVEMENT SYSTEM
+
+        # MOVEMENT SYSTEM
         self.walking_enabled = True
-        
-        #INPUT & INTERACTION
+
+        # INPUT & INTERACTION
         self.suppress_right_click = False
         self.question_active = False
         self._question_answers = None
-        self.pivot_images = None
         self.screen_shaker = None
         self.particles_manager = None
         self.sword_window = None
         self.warning_manager = None
-        
-        #PARRY AND BLOCK MECHANICS
+
+        # PARRY AND BLOCK MECHANICS
         self.attack_press_time          = 0
         self.attack_active_until        = 0
         self.last_attack_time           = 0
         self.parry_press_time           = 0
-        self.parry_active_until         = 0
+        self.parry_block_active_until         = 0
         self.last_parry_block_time      = 0
         self.f_key_held                 = False
-        self.blocking                   = False
         self.posture                    = 0
         self.posture_break_cooldown_until = 0
-        self._last_posture_update_time  = 0
-        
 
-        #ASSET LOADING
+        # ASSET LOADING
         self._load_images()
-        
-        #GUI SETUP
+
+        # GUI SETUP
         self._create_gui()
-        
-        #ANIMATION & CALLBACKS
+
+        # ANIMATION & CALLBACKS
         self.animation_timer = QTimer()
         self.animation_timer.timeout.connect(self.animate)
         self.animation_timer.start(self.ANIMATION_DELAY)
-        
-        #TIMER MANAGEMENT SYSTEM
+
+        # TIMER MANAGEMENT SYSTEM
         self.active_timers = set()  # Track all non-animation timers
-        
+
         self.idle_timer = None
         self.fight_loop_timer = None
         self.temp_combat_timer = None
         self.block_transition_callback = None
-        
-        #STARTUP SEQUENCE
-        self.sounds(self.sounds_group["greeting"])
+
+        # STARTUP SEQUENCE
+        self.sounds_group["greeting"].play(volume=self.sound_volume)
         self.add_talking_sentences(self.intro_line.strip(), "greeting", False)
-        
+
         self.window.show()
-        
+
         self._single_shot(self.GREETING_ANIMATION_DELAY, lambda: (
             self.idle_state(),
-            [img.close() for img in self.states["greeting"]], 
             self.states.update({"greeting": []})
-        ))        
-        #COMBAT SYSTEM
+        ))
+        # COMBAT SYSTEM
         self.bar_guis = None
         self.combat_ai = None
-        
-        #SYSTEM MONITORING
+
+        # FLIP OBJECT
+        self.horizontal_flip = QTransform()
+        self.horizontal_flip.scale(-1, 1)
+
+        # SYSTEM MONITORING
         self.process = psutil.Process(os.getpid())
-        
-        #INPUT SIGNAL EMITTER (for thread-safe communication from pynput listeners)
+
+        # INPUT SIGNAL EMITTER (for thread-safe communication from pynput listeners)
         self.input_emitter = InputSignalEmitter()
         self.input_emitter.f_pressed.connect(self._on_f_pressed_safe, Qt.QueuedConnection)
         self.input_emitter.f_released.connect(self._on_f_released_safe, Qt.QueuedConnection)
@@ -219,7 +270,6 @@ class Sharko(SharkoConstants, IconManager):
 
         self.keyboard_listener = None
         self.mouse_listener = None
-
         sys.exit(self.app.exec_())
 
     def log_stats(self):
@@ -231,11 +281,9 @@ class Sharko(SharkoConstants, IconManager):
     def get_inactive_length():
         last_input_info = LASTINPUTINFO()
         last_input_info.cbSize = sizeof(last_input_info)
-        
         windll.user32.GetLastInputInfo(byref(last_input_info))
-        
+
         millis = windll.kernel32.GetTickCount64()
-        
         return millis - last_input_info.dwTime
 
     def _add_timer(self, timer):
@@ -247,12 +295,12 @@ class Sharko(SharkoConstants, IconManager):
         """Create a tracked single-shot timer that cleans up automatically."""
         timer = self._add_timer(QTimer())
         timer.setSingleShot(True)
-        
+
         def cleanup():
             try:
                 callback()
             finally:
-                self.active_timers.discard(timer) 
+                self.active_timers.discard(timer)
                 timer.deleteLater()
 
         timer.timeout.connect(cleanup)
@@ -278,10 +326,9 @@ class Sharko(SharkoConstants, IconManager):
             self.block_transition_callback.stop()
             self.block_transition_callback.deleteLater()
             self.block_transition_callback = None
-        self.blocking = False
         self.parry_press_time = 0
         self.f_key_held = False
-    
+
     @staticmethod
     def _calculate_new_posture(current_posture, posture_amount, max_posture):
         if max_posture <= 0:
@@ -292,10 +339,9 @@ class Sharko(SharkoConstants, IconManager):
         return new_posture, overflow
 
     def _apply_posture(self, posture_amount):
-        """Adjust posture and trigger the posture-break state if it fills up."""            
+        """Adjust posture and trigger the posture-break state if it fills up."""
         current_posture = self.posture
         new_posture, overflow = self._calculate_new_posture(current_posture, posture_amount, self.MAX_POSTURE)
-
 
         if overflow and current_posture < self.MAX_POSTURE:
             self.posture = 0
@@ -304,24 +350,21 @@ class Sharko(SharkoConstants, IconManager):
             self.posture_break_cooldown_until = time.time() + self.POSTURE_BREAK_COOLDOWN
         self.posture = new_posture
         return new_posture
-    
-    def forward_damage(self, attack_type):
-        CombatSystem.damage(self, attack_type)
 
     def _create_gui(self):
         """Create and configure the GUI elements (label, menus, window properties)."""
         layout = QVBoxLayout(self.window)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        
+
         self.label = SharkoLabel(self.window)
         self.label.parent_sharko = self
-        self.label.setPixmap(ImgUtils._pil_to_qpixmap(self.states["idle"][0]()))
+        self.label.setPixmap(self.states["idle"][0]())
         layout.addWidget(self.label)
-        
+
         # Create context menu
         self.menu = QMenu(self.window)
-        self.Movie_menu = QMenu("Do not disturb", self.window) # internally known as movie mode
+        self.Movie_menu = QMenu("Do not disturb", self.window)  # internally known as movie mode
         self.Movie_menu.addAction("Off", self.movie_off)
         self.Movie_menu.addAction("On(Movie glasses)", self.movie_on_g)
         self.Movie_menu.addAction("On(No glasses)", self.movie_on_ng)
@@ -343,44 +386,44 @@ class Sharko(SharkoConstants, IconManager):
 
         self.cutscene_presets = {
             "InactiveCutscene": [
-                {"image": lambda: self.images["idle1"],        "duration": 1000, "sound": "None"},
-                {"image": lambda: self.images["sideframe"],    "duration": 150,  "sound": "None"},
-                {"image": lambda: self.images["staringframe"], "duration": 1000, "sound": "None"},
-                {"type": "talk", "image1": lambda: self.images["talk_fwd_1"], "image2": lambda: self.images["talk_fwd_2"], "sound": "start", "interval": 500, "repeat_count": 11, "text": "hello?"},
-                {"type": "talk", "image1": lambda: self.images["talk_fwd_1"], "image2": lambda: self.images["talk_fwd_2"], "sound": "clash_royale", "interval": 500, "repeat_count": 10, "text": "HELLO!"},
-                {"image": lambda: self.images["staringframe"], "duration": 1000, "sound": "None"},
-                {"image": lambda: self.images["sideframe"],    "duration": 150,  "sound": "None"},
+                {"image": lambda: self.qpixmaps["idle1"], "duration": 1000, "sound": "None"},
+                {"image": lambda: self.qpixmaps["sideframe"], "duration": 150, "sound": "None"},
+                {"image": lambda: self.qpixmaps["staringframe"], "duration": 1000, "sound": "None"},
+                {"type": "talk", "image1": lambda: self.qpixmaps["talk_fwd_1"], "image2": lambda: self.qpixmaps["talk_fwd_2"], "sound": "start", "interval": 500, "repeat_count": 11, "text": "hello?"},
+                {"type": "talk", "image1": lambda: self.qpixmaps["talk_fwd_1"], "image2": lambda: self.qpixmaps["talk_fwd_2"], "sound": "clash_royale", "interval": 500, "repeat_count": 10, "text": "HELLO!"},
+                {"image": lambda: self.qpixmaps["staringframe"], "duration": 1000, "sound": "None"},
+                {"image": lambda: self.qpixmaps["sideframe"], "duration": 150, "sound": "None"},
             ],
         }
 
     def _load_images(self):
         """Load all animation images from specified paths into state dictionaries."""
 
-        self.images = {
-            "idle1": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "idle1.png")),
-            "idle2": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "idle2.png")),
-            "walk1": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "walk1.png")),
-            "walk2": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "walk2.png")),
-            "talk1": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "talking1.png")),
-            "talk2": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "talking2.png")),
-            "glasses1": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "glasses1.png")),
-            "glasses2": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "glasses2.png")),
-            "sideframe": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "sideframe.png")),
-            "staringframe": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "staringframe.png")),
-            "talk_fwd_1": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "talking_forward1.png")),
-            "talk_fwd_2": Image.open(os.path.join(self.CURRENT_IMAGES_PATH, "talking_forward2.png"))
+        self.qpixmaps = {
+            "idle1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "idle1.png")),
+            "idle2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "idle2.png")),
+            "walk1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "walk1.png")),
+            "walk2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "walk2.png")),
+            "glasses1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "glasses1.png")),
+            "glasses2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "glasses2.png")),
+            "sideframe": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "sideframe.png")),
+            "staringframe": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "staringframe.png")),
+            "talk1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "talking1.png")),
+            "talk2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "talking2.png")),
+            "talk_fwd_1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "talking_forward1.png")),
+            "talk_fwd_2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "talking_forward2.png")),
         }
         self._load_cutscenes()
 
         self.states = {
-            "idle": [lambda: self.images["idle1"],lambda: self.images["idle2"]],
-            "Limbo": [lambda: self.images["idle1"],lambda: self.images["idle2"]],
-            "walking": [lambda: self.images["walk1"],lambda: self.images["walk2"]],
+            "idle": [lambda: self.qpixmaps["idle1"], lambda: self.qpixmaps["idle2"]],
+            "Limbo": [lambda: self.qpixmaps["idle1"], lambda: self.qpixmaps["idle2"]],
+            "walking": [lambda: self.qpixmaps["walk1"], lambda: self.qpixmaps["walk2"]],
             "talking": [],
             "fight": [],
             "greeting": [],
-            "MovieG": [lambda: self.images["glasses1"],lambda: self.images["glasses2"]],
-            "MovieNG": [lambda: self.images["idle1"],lambda: self.images["idle2"]],
+            "MovieG": [lambda: self.qpixmaps["glasses1"], lambda: self.qpixmaps["glasses2"]],
+            "MovieNG": [lambda: self.qpixmaps["idle1"], lambda: self.qpixmaps["idle2"]],
             "cutscene": [],
             "removal": [],
         }
@@ -405,14 +448,12 @@ class Sharko(SharkoConstants, IconManager):
                 return
             self.new_state("idle")
         self.frame = (self.frame + 1) % len(state_images)
-        pil_frame_img = state_images[self.frame]
-        
-        photo_image = pil_frame_img() if callable(pil_frame_img) else pil_frame_img
+        qpixmap_frame_pointer = state_images[self.frame]
+
+        qpixmap = qpixmap_frame_pointer() if callable(qpixmap_frame_pointer) else qpixmap_frame_pointer
         if self.current_facing == "Left" and self.current_state not in ("talking", "removal"):
-            photo_image = photo_image.transpose(Image.FLIP_LEFT_RIGHT)
-        self.label.setPixmap(ImgUtils._pil_to_qpixmap(photo_image))
-        if self.current_facing == "Left" and self.current_state not in ("talking", "removal"):
-            photo_image.close()
+            qpixmap = qpixmap.transformed(self.horizontal_flip)
+        self.label.setPixmap(qpixmap)
 
     def move_window_x(self, target_x):
         """Animate character window movement to target X position.
@@ -439,7 +480,7 @@ class Sharko(SharkoConstants, IconManager):
             self.x = new_x
             self.window.setGeometry(new_x, self.window.y(), self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
             self._single_shot(self.FRAME_DELAY_MS, lambda: step_move(current_step + 1, current_x + step_dx))
-        
+
         self._single_shot(self.FRAME_DELAY_MS, lambda: step_move(0, start_x))
 
     def play_cutscene(self, cutscene_preset):
@@ -454,33 +495,29 @@ class Sharko(SharkoConstants, IconManager):
         self._play_cutscene_frame(cutscene, 0, cutscene_preset, 0)
 
     def _play_cutscene_frame(self, cutscene, current_frame, cutscene_preset, repeat_count):
-        
         if cutscene_preset == "InactiveCutscene" and self.get_inactive_length() < self.INACTIVE_TIME_REQUIREMENT and current_frame < 6:
-                current_frame = 6
-                self.talking_disabled = True
+            current_frame = 6
+            self.talking_disabled = True
         if current_frame == len(cutscene):
             self.cutscene_active = False
             self._toggle_menu_items(["Close"], True)
             self.idle_state()
             return
-        
+
         current_frame_data = cutscene[current_frame]
         frame_type = current_frame_data.get("type")
         sound_cleared = False
         if frame_type in ("repeat", "talk"):
             if frame_type == "talk":
                 text_img = ImgUtils._render_text_image(self, current_frame_data["text"], (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT))
-                bg_img = current_frame_data["image1" if repeat_count % 2 == 0 else "image2"]()
+                bg_pixmap = current_frame_data["image1" if repeat_count % 2 == 0 else "image2"]()
                 if self.current_facing == "Left":
-                    bg_img = bg_img.transpose(Image.FLIP_LEFT_RIGHT)
-                image = ImgUtils.composite_on_base(self, bg_img, text_img)
-                if self.current_facing == "Left":
-                    bg_img.close()
-                text_img.close()
+                    bg_pixmap = bg_pixmap.transformed(self.horizontal_flip)
+                image = ImgUtils.composite_on_base(self, bg_pixmap, text_img)
             else:
                 image = current_frame_data["image1"]()
                 if self.current_facing == "Left":
-                    image = image.transpose(Image.FLIP_LEFT_RIGHT)
+                    image = image.transformed(self.horizontal_flip)
 
             duration = current_frame_data["interval"]
             sound = current_frame_data["sound"]
@@ -499,23 +536,19 @@ class Sharko(SharkoConstants, IconManager):
             sound       = current_frame_data["sound"]
             sound_cleared = True
             current_frame += 1
-            if self.current_facing == "Left": 
-                image = image.transpose(Image.FLIP_LEFT_RIGHT)
-    
-        if sound != "None" and sound_cleared:
-            self.sounds(self.sounds_group[sound])
-        self.label.setPixmap(ImgUtils._pil_to_qpixmap(image))
-        if frame_type == "talk" or frame_type == "repeat" and self.current_facing == "Left":
-            image.close()
-        self._single_shot(duration, lambda: self._play_cutscene_frame(cutscene, current_frame, cutscene_preset, repeat_count))
+            if self.current_facing == "Left":
+                image = image.transformed(self.horizontal_flip)
 
+        if sound != "None" and sound_cleared:
+            self.sounds_group[sound].play(volume=self.sound_volume)
+        self.label.setPixmap(image)
+        self._single_shot(duration, lambda: self._play_cutscene_frame(cutscene, current_frame, cutscene_preset, repeat_count))
 
     def clear_talking(self):
         if getattr(self, "question_active", False):
             self.question_active = False
             self._question_answers = None
-        for img in self.states["talking"]:
-            img.close()
+        self.states["talking"] = []
 
     def _middle_button_pressed(self, event):
         if self.fight_mode_active or self.cutscene_active:
@@ -531,7 +564,7 @@ class Sharko(SharkoConstants, IconManager):
     def _middle_button_hold_move(self, event):
         if self.fight_mode_active or self.cutscene_active:
             return
-        cursor_pos = QCursor.pos()
+        cursor_pos = event.globalPos()
         x = cursor_pos.x() - self.x
         y = cursor_pos.y() - self.y
         self.window.setGeometry(x, y, self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
@@ -549,7 +582,7 @@ class Sharko(SharkoConstants, IconManager):
             answer_text = self._question_answers[1] if self._question_answers else None
 
         if answer_text:
-            self.sounds(self.sounds_group["answer"])
+            self.sounds_group["answer"].play(volume=self.sound_volume)
             self._display_answer(answer_text)
 
     def _display_answer(self, answer_text):
@@ -575,7 +608,7 @@ class Sharko(SharkoConstants, IconManager):
     def movie_on_g(self):
         if self.current_state in ("idle", "talking", "greeting"):
             self.new_state("MovieG")
-    
+
     def movie_on_ng(self):
         if self.current_state in ("idle", "talking", "greeting"):
             self.new_state("MovieNG")
@@ -591,11 +624,11 @@ class Sharko(SharkoConstants, IconManager):
         if self.current_state == "walking":
             self.new_state("idle")
 
-    def flip_side(self, manual_activation = False):    
-        if manual_activation == True and self.current_state == "walking":
+    def flip_side(self, manual_activation=False):
+        if manual_activation and self.current_state == "walking":
             return
         self.window.raise_()
-        
+
         if self.current_facing == "Right":
             self.current_facing = "Left"
             self.x = 0
@@ -603,38 +636,31 @@ class Sharko(SharkoConstants, IconManager):
             self.current_facing = "Right"
             right_x = max(0, self.screen_x - self.WINDOW_SIZE_X)
             self.x = right_x
-        
+
         self.window.setGeometry(self.x, self.window.y(), self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
         self.animate()
-        if self.current_state == "walking": 
+        if self.current_state == "walking":
             self.idle_state()
-            return 
+            return
         self.new_state("Limbo")
 
     def _on_f_pressed_safe(self):
-        # Only initialize on first press, not on key repeat
         current_time = time.time()
         if current_time < self.posture_break_cooldown_until:
             return
         if self.parry_press_time == 0 and current_time - self.last_parry_block_time >= self.PARRY_BLOCK_COOLDOWN:
             self.last_parry_block_time = current_time
-            # Cancel any pending callback from previous key press
             self._cancel_block_transition()
 
-            # Start parry window
             self.f_key_held = True
             self.parry_press_time = time.time()
-            self.parry_active_until = self.parry_press_time + self.PARRY_WINDOW
-            
-            # Schedule block transition at 0.3s mark
+            self.parry_block_active_until = self.parry_press_time + self.PARRY_WINDOW
+
             def transition_to_block():
-                # Check both that key is held AND that 0.3s has actually passed
                 if self.f_key_held and (time.time() - self.parry_press_time) >= self.PARRY_WINDOW:
-                    self.blocking = True
-                    # Extend parry window to include block window
-                    self.parry_active_until = time.time() + self.PARRY_WINDOW
-                    self.sounds(self.sounds_group["block_attempt"])
-            
+                    self.parry_block_active_until = time.time() + self.PARRY_WINDOW
+                    self.sounds_group["block_attempt"].play(volume=self.sound_volume)
+
             self.block_transition_callback = self._add_timer(QTimer())
             self.block_transition_callback.setSingleShot(True)
             self.block_transition_callback.timeout.connect(transition_to_block)
@@ -645,15 +671,14 @@ class Sharko(SharkoConstants, IconManager):
         self.f_key_held = False
         self._cancel_block_transition()
 
-
     def _on_action_safe(self, x, y, button):
         if self.fight_mode_active and button == mouse.Button.left:
-                current_time = time.time()
-                if current_time - self.last_attack_time >= self.ATTACK_COOLDOWN:
-                    self.last_attack_time = current_time
-                    self.attack_press_time = time.time()
-                    self.attack_active_until = self.attack_press_time + self.PARRY_WINDOW
-                    CombatSystem.mouse_attack(self,x,y)
+            current_time = time.time()
+            if current_time - self.last_attack_time >= self.ATTACK_COOLDOWN:
+                self.last_attack_time = current_time
+                self.attack_press_time = time.time()
+                self.attack_active_until = self.attack_press_time + self.PARRY_WINDOW
+                CombatSystem.mouse_attack(self, x, y)
 
     def _on_f_press(self, key):
         if getattr(key, "char", None) == "f" and self.fight_mode_active:
@@ -698,7 +723,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.add_new_question(line_text)
             self.new_state("talking")
 
-            self.sounds(self.sounds_group["start"])
+            self.sounds_group["start"].play(volume=self.sound_volume)
         if hasattr(self, "idle_timer") and self.idle_timer:
             self.idle_timer.stop()
             self.idle_timer.deleteLater()
@@ -706,7 +731,7 @@ class Sharko(SharkoConstants, IconManager):
         self.idle_timer.setSingleShot(True)
         self.idle_timer.timeout.connect(self.idle_state)
         self.idle_timer.start(self.TALKING_ANIMATION_DELAY)
-    
+
     def _should_transition_to_idle(self) -> bool:
         """Check if current state should transition to idle state."""
         is_talking_like = self.current_state in ("talking", "greeting")
@@ -715,13 +740,13 @@ class Sharko(SharkoConstants, IconManager):
         is_limbo        = self.current_state == "Limbo"
         is_fight        = self.current_state == "fight" and not self.fight_mode_active
         return is_talking_like or is_cutscene or is_walking or is_limbo or is_fight
-    
+
     def idle_state(self):
         self.log_stats()
         if not self._should_transition_to_idle():
             return
         if self.current_state not in ("walking", "cutscene", "Limbo"):
-            self.sounds(self.sounds_group["end"])
+            self.sounds_group["end"].play(volume=self.sound_volume)
         self.new_state("idle")
         self.clear_talking()
         inactive_length = self.get_inactive_length()
@@ -732,8 +757,7 @@ class Sharko(SharkoConstants, IconManager):
             if inactive_length < self.INACTIVE_TIME_REQUIREMENT:
                 self.talking_disabled = False
             random_number = random.random()
-            if (random_number > 0.2 and not self.talking_disabled) or self.currently_moving or \
-            (not self.walking_enabled and not self.talking_disabled):
+            if (random_number > 0.2 and not self.talking_disabled) or self.currently_moving or not self.walking_enabled and not self.talking_disabled:
                 self._single_shot(self.IDLE_ANIMATION_DELAY, self.talking_state)
             elif self.walking_enabled:
                 self._single_shot(self.IDLE_ANIMATION_DELAY, self.walking_state)
@@ -750,12 +774,10 @@ class Sharko(SharkoConstants, IconManager):
         if not state_images:
             return
         self.frame = (self.frame + 1) % len(state_images)
-        photo_image = state_images[self.frame]()
-        if self.current_facing == "Left": 
-            photo_image = photo_image.transpose(Image.FLIP_LEFT_RIGHT)
-        self.label.setPixmap(ImgUtils._pil_to_qpixmap(photo_image))
-        if self.current_facing == "Left": 
-            photo_image.close()
+        qpixmap = state_images[self.frame]()
+        if self.current_facing == "Left":
+            qpixmap = qpixmap.transformed(self.horizontal_flip)
+        self.label.setPixmap(qpixmap)
 
         if self.current_facing == "Right":
             self.move_window_x(-179)
@@ -763,7 +785,7 @@ class Sharko(SharkoConstants, IconManager):
             self.move_window_x(self.screen_x - 179)
 
     def add_new_question(self, Question_Lines):
-        self.add_talking_sentences(Question_Lines, "talking",True)
+        self.add_talking_sentences(Question_Lines, "talking", True)
 
     def add_talking_sentences(self, sentence, state, is_question):
         if not self.Lines:
@@ -775,85 +797,38 @@ class Sharko(SharkoConstants, IconManager):
 
     def _add_talking_images(self, sentence, state):
         text_img = ImgUtils._render_text_image(self, sentence, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT))
-        try:
-            base1_photo_image, base2_photo_image = self.images["talk1"], self.images["talk2"]
-            base1 = base1_photo_image.convert("RGBA")
-            base2 = base2_photo_image.convert("RGBA")
-            if self.current_facing == "Left":
-                base1 = base1.transpose(Image.FLIP_LEFT_RIGHT)
-                base2 = base2.transpose(Image.FLIP_LEFT_RIGHT)
-        except Exception:
-            try:
-                self.states[state] = [text_img, text_img]
-            except Exception:
-                return
-            return
 
-        comp1 = ImgUtils.composite_on_base(self, base1, text_img)
-        comp2 = ImgUtils.composite_on_base(self, base2, text_img)
-        base1.close()
-        base2.close()
-        for img in self.states[state]:
-            img.close()
-        self.states[state] = [comp1, comp2] 
-    
-    def _add_question_images(self,sentence, state):
-        question_text   = sentence[0]
-        option1_text    = sentence[1]
-        option2_text    = sentence[2]
-        answer1_text    = sentence[3]
-        answer2_text    = sentence[4]
+        base1 = self.qpixmaps["talk1"]
+        base2 = self.qpixmaps["talk2"]
 
+        if self.current_facing == "Left":
+            base1 = base1.transformed(self.horizontal_flip)
+            base2 = base2.transformed(self.horizontal_flip)
 
-        q_img       = ImgUtils._render_text_image(self, question_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_TEXT_HEIGHT))
-        opt1_img    = ImgUtils._render_text_image(self, option1_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
-        opt2_img    = ImgUtils._render_text_image(self, option2_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
+        comp1_pixmap = ImgUtils.composite_on_base(self, base1, text_img)
+        comp2_pixmap = ImgUtils.composite_on_base(self, base2, text_img)
 
-        try:
-            base1_photo_image, base2_photo_image = self.images["talk1"], self.images["talk2"]
-            base1 = base1_photo_image.convert("RGBA")
-            base2 = base2_photo_image.convert("RGBA")
-            if self.current_facing == "Left":
-                base1 = base1.transpose(Image.FLIP_LEFT_RIGHT)
-                base2 = base2.transpose(Image.FLIP_LEFT_RIGHT)
+        self.states[state] = [comp1_pixmap, comp2_pixmap]
 
-        except Exception:
-            try:
-                combined = Image.new("RGBA", (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT), (0, 0, 0, 0))
-                combined.paste(q_img, (0, self.QUESTION_BOX_TOP_Y), q_img)
-                combined.paste(opt1_img, (0, self.QUESTION_BOX_OPTION1_Y), opt1_img)
-                combined.paste(opt2_img, (0, self.QUESTION_BOX_OPTION2_Y), opt2_img)
-                for img in self.states[state]:
-                    img.close()
-                self.states[state] = [combined, combined]
-                self._question_answers = (answer1_text, answer2_text)
-                self.question_active = True
-            except Exception:
-                return
-            return
+    def _add_question_images(self, sentence, state):
+        question_text, option1_text, option2_text, answer1_text, answer2_text = sentence
 
-        def _composite_three(base_img):
-            b = base_img.copy()
-            if self.current_facing == "Left":
-                x = self.TEXT_OFFSET_LEFT
-            else:
-                x = self.TEXT_OFFSET_RIGHT
-            b.paste(q_img, (x, self.QUESTION_BOX_TOP_Y), q_img)
-            b.paste(opt1_img, (x, self.QUESTION_BOX_OPTION1_Y), opt1_img)
-            b.paste(opt2_img, (x, self.QUESTION_BOX_OPTION2_Y), opt2_img)
-            return b
+        q_img    = ImgUtils._render_text_image(self, question_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_TEXT_HEIGHT))
+        opt1_img = ImgUtils._render_text_image(self, option1_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
+        opt2_img = ImgUtils._render_text_image(self, option2_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_OPTION_HEIGHT))
 
-        comp1 = _composite_three(base1)
-        comp2 = _composite_three(base2)
-        base1.close()
-        base2.close()
-        for img in self.states[state]:
-            img.close()
-        self.states[state] = [comp1, comp2]
-        
+        base1 = self.qpixmaps["talk1"]
+        base2 = self.qpixmaps["talk2"]
+        if self.current_facing == "Left":
+            base1 = base1.transformed(self.horizontal_flip)
+            base2 = base2.transformed(self.horizontal_flip)
+
+        comp1_pixmap = ImgUtils.composite_three(self, base1, q_img, opt1_img, opt2_img)
+        comp2_pixmap = ImgUtils.composite_three(self, base2, q_img, opt1_img, opt2_img)
+
+        self.states[state] = [comp1_pixmap, comp2_pixmap]
         self._question_answers = (answer1_text, answer2_text)
         self.question_active = True
-        return
 
     def close_command(self):
         self._stop_all_timers()
@@ -861,7 +836,7 @@ class Sharko(SharkoConstants, IconManager):
             self.cutscene_active = False
         self._toggle_menu_items([], False)
         if self.current_state != "removal":
-            self.add_talking_sentences(random.choice(self.removal_lines).strip(),"removal",False)
+            self.add_talking_sentences(random.choice(self.removal_lines).strip(), "removal", False)
             self.new_state("removal")
         if not getattr(self, "_death_scheduled", False):
             self._death_scheduled = True
@@ -888,11 +863,10 @@ class Sharko(SharkoConstants, IconManager):
                 self.load_tiles(src_path)
                 src_path.size = (SharkoConstants.WINDOW_SIZE_X, SharkoConstants.WINDOW_SIZE_Y)
                 self.resize(self.img_w, self.img_h)
-                self.setGeometry(screen_x-50, screen_y-600, self.img_w, self.img_h)
-                self.setFixedSize(600,2000)
+                self.setGeometry(screen_x - 50, screen_y - 600, self.img_w, self.img_h)
+                self.setFixedSize(600, 2000)
                 self.show()
                 self.timer.start(16)
-
 
             def load_tiles(self, src_path):
                 src = src_path
@@ -902,7 +876,7 @@ class Sharko(SharkoConstants, IconManager):
                     for x in range(0, self.img_w, TILE_SIZE):
                         tile_img = src.copy(x, y, TILE_SIZE, TILE_SIZE)
                         if tile_img.hasAlphaChannel():
-                            self.tiles.append(Tile(QPixmap.fromImage(tile_img), x+50, y, SharkoConstants.FADE_STEP))
+                            self.tiles.append(Tile(QPixmap.fromImage(tile_img), x + 50, y, SharkoConstants.FADE_STEP))
 
             def animate(self):
                 for tile in self.tiles:
@@ -920,29 +894,22 @@ class Sharko(SharkoConstants, IconManager):
                 painter.setRenderHint(QPainter.SmoothPixmapTransform)
                 for tile in self.tiles:
                     painter.save()
-                    painter.setOpacity(tile.alpha / 255.0)
+                    painter.setOpacity(tile.alpha / 255)
                     painter.translate(tile.x + TILE_SIZE // 2, tile.y + TILE_SIZE // 2)
                     painter.rotate(tile.angle)
                     painter.translate(-TILE_SIZE // 2, -TILE_SIZE // 2)
                     painter.drawPixmap(0, 0, tile.img)
                     painter.restore()
         state_images = self.states.get(self.current_state, [])
-        img_path = state_images[self.frame]
-        # Convert PIL Image to QImage properly
-        img = img_path.convert("RGBA")
-        data = img.tobytes("raw", "RGBA")
-        w, h = img.size
-        qimg = QImage(data, w, h, 4*w, QImage.Format_RGBA8888)
-        # Keep a reference to prevent garbage collection
-        self._death_image_buf = data
+        qpixmap = state_images[self.frame]
+        qimg = qpixmap.toImage()
         self.deathwidget = DeathAnimationWidget(qimg)
-        
 
     def toggle_fight_mode(self):
         if self.current_state != "fight":
             self.fight_mode_active = True
             WindowsUtils.cache_desktop_handles()
-            blocker_keyboard.add_hotkey('shift+f10', lambda: None, suppress = True) #desktop context menu open shortcut
+            blocker_keyboard.add_hotkey('shift+f10', lambda: None, suppress=True)  # desktop context menu open shortcut
             self.suppress_right_click = True
             self._stop_all_timers()
 
@@ -951,16 +918,15 @@ class Sharko(SharkoConstants, IconManager):
                 self.animation_timer.deleteLater()
                 self.animation_timer = None
 
-            self.bar_guis = ScalableHealthBar(bar_height_scale = 0.05, target_obj = self)
+            self.bar_guis = ScalableHealthBar(bar_height_scale=0.05, target_obj=self)
             self.bar_guis.pb_percentage = 0
             self.posture = 0
-            self.posture_break_cooldown_until = 0.0
-            self._last_posture_update_time = time.time()
+            self.posture_break_cooldown_until = 0
             self.bar_guis.slide_in()
             self.warning_manager = MultiWarningOverlay()
             self.screen_shaker = ScreenShaker()
-            self.toast_manager = ToastManager(damage_callback = self.forward_damage)
-            self.particles_manager = VFXManager(damage_callback = self.forward_damage, screen_shaker = self.screen_shaker)
+            self.toast_manager = ToastManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type))
+            self.particles_manager = VFXManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type), screen_shaker=self.screen_shaker)
             self.screen_shaker.particles_manager = self.particles_manager
             self.combat_ai = SharkoCombatAI(self)
             WindowsUtils.disable_desktop_grid_and_autoarrange_universal()
@@ -980,11 +946,6 @@ class Sharko(SharkoConstants, IconManager):
             self.animation_timer.start(self.ANIMATION_DELAY)
             self._stop_all_timers()
 
-            if hasattr(self, "pivot_images") and self.pivot_images:
-                for img in self.pivot_images.values():
-                    img.close()
-                self.pivot_images.clear()
-                del self.pivot_images
             if hasattr(self, "combat_ai") and self.combat_ai:
                 del self.combat_ai
                 self.combat_ai = None
@@ -1016,7 +977,6 @@ class Sharko(SharkoConstants, IconManager):
             self.idle_state()
             self._toggle_menu_items(["Fight"], True)
 
-
     def fight_loop(self):
         if self.fight_loop_timer:
             self.fight_loop_timer.stop()
@@ -1028,33 +988,8 @@ class Sharko(SharkoConstants, IconManager):
 
         self.combat_ai.run_fight_loop_tick()
 
-    def sounds(self, sound_object):
-        if self.sound_volume == 0:
-            return
-        with self.sound_lock:
-            if sound_object[1]:
-                try:
-                    self._pitched_from_sound_object(sound_object[0])
-                except Exception as e:
-                    print(f"Error playing sound: {e}")
-            else:
-                try:
-                    sound_object[0].set_volume(self.sound_volume)
-                    sound_object[0].play()
-                except Exception as e:
-                    print(f"Error playing sound: {e}")
-    def _pitched_from_sound_object(self, sound_object):
-        pitch_factor = random.uniform(0.97, 1.03)
-
-        snd_array = pygame.sndarray.array(sound_object)
-        new_indices = np.arange(0, len(snd_array), pitch_factor).astype(np.int32)
-        pitched_array = snd_array[new_indices[new_indices < len(snd_array)]]
-        pitched_sound = pygame.sndarray.make_sound(pitched_array)
-        pitched_sound.set_volume(self.sound_volume)
-        pitched_sound.play()
-    
     def sounds_logics(self, volume):
-        self.sound_volume = volume/100        
+        self.sound_volume = volume / 100
 
 
 # Initialize and run

@@ -26,6 +26,7 @@ from constants import SharkoConstants
 
 _cached_desktop_hwnds = set()
 
+
 class WindowsUtils:
     """Utilities for desktop icon manipulation and window management."""
 
@@ -90,14 +91,14 @@ class WindowsUtils:
         """Maps out the workspace wallpaper window handles cleanly."""
         global _cached_desktop_hwnds
         _cached_desktop_hwnds.clear()
-        
+
         progman = win32gui.FindWindow("Progman", "Program Manager")
         if progman:
             _cached_desktop_hwnds.add(progman)
             shelldll = win32gui.FindWindowEx(progman, 0, "SHELLDLL_DefView", None)
             if shelldll:
                 _cached_desktop_hwnds.add(shelldll)
-                
+
         def callback(hwnd, extra):
             if win32gui.GetClassName(hwnd) == "WorkerW":
                 child = win32gui.FindWindowEx(hwnd, 0, "SHELLDLL_DefView", None)
@@ -111,7 +112,7 @@ class WindowsUtils:
     def should_supress_click():
         cursor_pos = win32gui.GetCursorPos()
         hwnd_under_cursor = win32gui.WindowFromPoint(cursor_pos)
-        
+
         current = hwnd_under_cursor
         is_desktop = False
         while current:
@@ -119,8 +120,8 @@ class WindowsUtils:
                 is_desktop = True
                 break
             current = win32gui.GetParent(current)
-        
-        return is_desktop        
+
+        return is_desktop
 
     @staticmethod
     def are_notifications_enabled():
@@ -333,7 +334,7 @@ class WindowsUtils:
 
         shortcut.save()
 
-        name_str = f"{base_name}" if counter == 1 else f"{base_name} ({counter-1})"
+        name_str = f"{base_name}" if counter == 1 else f"{base_name} ({counter - 1})"
         start_time = time.time()
 
         while time.time() - start_time < 200:

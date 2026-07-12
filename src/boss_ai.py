@@ -56,20 +56,15 @@ class SharkoCombatAI:
 
             current_frame += 1
             # Alternate idle frames
-            from img_utils import ImgUtils
 
             if current_frame % 2 == 0:
-                photo_image = sharko.states["idle"][0]()
+                pixmap = sharko.states["idle"][0]()
             else:
-                photo_image = sharko.states["idle"][1]()
-
-            from PIL import Image
+                pixmap = sharko.states["idle"][1]()
 
             if sharko.current_facing == "Left":
-                photo_image = photo_image.transpose(Image.FLIP_LEFT_RIGHT)
-            sharko.label.setPixmap(ImgUtils._pil_to_qpixmap(photo_image))
-            if sharko.current_facing == "Left":
-                photo_image.close()
+                pixmap = pixmap.transformed(sharko.horizontal_flip)
+            sharko.label.setPixmap(pixmap)
 
             if sharko.fight_loop_timer:
                 sharko.fight_loop_timer.stop()

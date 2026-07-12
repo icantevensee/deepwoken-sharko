@@ -5,7 +5,6 @@ import                          time
 import                          threading
 
 import                          ctypes
-from ctypes              import wintypes
 
 import                          win32api
 import                          win32gui
@@ -14,9 +13,8 @@ import                          win32ui
 import                          winsound
 from winrt.windows.ui.notifications import ToastNotificationManager
 
-from PIL                import Image
 from PyQt5.QtCore       import Qt, QTimer, QObject, pyqtSignal
-from PyQt5.QtGui        import QImage, QPixmap
+from PyQt5.QtGui        import QImage, QPixmap, QPainter
 from PyQt5.QtWidgets    import QLabel
 
 import uiautomation         as auto
@@ -25,8 +23,9 @@ from win11toast         import toast
 from constants          import SharkoConstants
 from img_utils          import ImgUtils
 
+
 class ToastBridge(QObject):
-    toast_captured = pyqtSignal(bytes, int, int, int, int, str)  # rgba_bytes, width, height, x, y, target_aumid
+    toast_captured = pyqtSignal(QImage, int, int, int, int, str)  # rgba_bytes, width, height, x, y, target_aumid
 
 
 class ToastManager:
@@ -52,14 +51,14 @@ class ToastManager:
             bitmap = win32ui.CreateBitmap()
             bitmap.CreateCompatibleBitmap(mfc_dc, w, h)
             save_dc.SelectObject(bitmap)
-            
+
             ctypes.windll.user32.PrintWindow(hwnd, save_dc.GetSafeHdc(), 2)
-            
+
             # Extract bits while DCs are active
             bmpinfo = bitmap.GetInfo()
             bmpstr = bitmap.GetBitmapBits(True)
             expected_size = bmpinfo['bmWidth'] * bmpinfo['bmHeight'] * 4  # RGBA = 4 bytes per pixel
-            
+
             # Validate bitmap data completeness
             if bmpstr is None or len(bmpstr) < expected_size:
                 win32gui.DeleteObject(bitmap.GetHandle())
@@ -67,8 +66,13 @@ class ToastManager:
                 mfc_dc.DeleteDC()
                 win32gui.ReleaseDC(hwnd, hwnd_dc)
                 raise ValueError(f"Incomplete bitmap capture: got {len(bmpstr) if bmpstr else 0} bytes, expected {expected_size}")
-            
-            img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
+
+            q_img = QImage(
+                bmpstr,
+                bmpinfo['bmWidth'],
+                bmpinfo['bmHeight'],
+                QImage.Format_ARGB32
+            ).copy()
 
             # CLEANUP PATH A: Delete memory DCs first, then release window DC
             win32gui.DeleteObject(bitmap.GetHandle())
@@ -86,12 +90,12 @@ class ToastManager:
             save_dc.SelectObject(bitmap)
 
             save_dc.BitBlt((0, 0), (w, h), mfc_dc, (x1, y1), win32con.SRCCOPY)
-            
+
             # Extract bits while DCs are active
             bmpinfo = bitmap.GetInfo()
             bmpstr = bitmap.GetBitmapBits(True)
             expected_size = bmpinfo['bmWidth'] * bmpinfo['bmHeight'] * 4  # RGBA = 4 bytes per pixel
-            
+
             # Validate bitmap data completeness
             if bmpstr is None or len(bmpstr) < expected_size:
                 win32gui.DeleteObject(bitmap.GetHandle())
@@ -99,8 +103,13 @@ class ToastManager:
                 mfc_dc.DeleteDC()
                 win32gui.ReleaseDC(h_desktop, desktop_dc)
                 raise ValueError(f"Incomplete bitmap capture: got {len(bmpstr) if bmpstr else 0} bytes, expected {expected_size}")
-            
-            img = Image.frombuffer('RGBA', (bmpinfo['bmWidth'], bmpinfo['bmHeight']), bmpstr, 'raw', 'BGRA', 0, 1)
+
+            q_img = QImage(
+                bmpstr,
+                bmpinfo['bmWidth'],
+                bmpinfo['bmHeight'],
+                QImage.Format_ARGB32
+            ).copy()
 
             # CLEANUP PATH B: Delete memory DCs first, then release desktop DC
             win32gui.DeleteObject(bitmap.GetHandle())
@@ -108,7 +117,7 @@ class ToastManager:
             mfc_dc.DeleteDC()
             win32gui.ReleaseDC(h_desktop, desktop_dc)
 
-        return img, x1, y1
+        return q_img, x1, y1
 
     def spawn_and_clone_worker(self, title, body):
         """Runs isolated inside a separate Thread. Initializes STA COM,
@@ -122,15 +131,15 @@ class ToastManager:
             history_manager.clear_with_id(TARGET_AUMID)
             winsound.PlaySound("Notification.Default", winsound.SND_ALIAS | winsound.SND_ASYNC)
             toast_thread = threading.Thread(target=lambda:
-                toast(
-                title, 
-                body,
-                app_id=TARGET_AUMID,
-                scenario='incomingCall',
-                duration='short',
-                audio={'silent': 'true'}, 
-                tag=str(int(time.time()*10))
-            ), daemon=True)
+                                            toast(
+                                                title,
+                                                body,
+                                                app_id=TARGET_AUMID,
+                                                scenario='incomingCall',
+                                                duration='short',
+                                                audio={'silent': 'true'},
+                                                tag=str(int(time.time() * 10))
+                                            ), daemon=True)
             toast_thread.start()
 
             toast_hwnd = None
@@ -159,61 +168,57 @@ class ToastManager:
                                                     break
                                             current = parent
                                         break
-                                except Exception as e:
+                                except Exception:
                                     pass
                             if target_crop_bounds:
                                 break
-                    except Exception as e:
+                    except Exception:
                         pass
                 if target_crop_bounds:
                     break
-                time.sleep(0.05) 
+                time.sleep(0.05)
             if not toast_hwnd or not target_crop_bounds:
                 history_manager.clear_with_id(TARGET_AUMID)
                 return
             time.sleep(0.3)
-            try:
-                full_stack_img, win_x1, win_y1 = self._capture_window(toast_hwnd, False)
-                full_stack_img2, win_x1, win_y1 = self._capture_window(toast_hwnd, True)
-            except (ValueError, Exception):
-                history_manager.clear_with_id(TARGET_AUMID)
-                return
+            full_stack_img, win_x1, win_y1 = self._capture_window(toast_hwnd, False)
+            full_stack_img2, win_x1, win_y1 = self._capture_window(toast_hwnd, True)
+
             local_x1 = max(0, target_crop_bounds.left - win_x1)
             local_y1 = max(0, target_crop_bounds.top - win_y1)
-            local_x2 = min(full_stack_img.width, local_x1 + target_crop_bounds.width())
-            local_y2 = min(full_stack_img.height, local_y1 + target_crop_bounds.height())
+            local_x2 = min(full_stack_img.width(), local_x1 + target_crop_bounds.width())
+            local_y2 = min(full_stack_img.height(), local_y1 + target_crop_bounds.height())
 
-            cropped_img = full_stack_img.crop((local_x1, local_y1, local_x2, local_y2))
-            cropped_img2 = full_stack_img2.crop((local_x1, local_y1, local_x2, local_y2))
-            full_stack_img.close()
-            full_stack_img2.close()
-            w_final, h_final = cropped_img.size
+            w_final = local_x2 - local_x1
+            h_final = local_y2 - local_y1
 
-            transparent_img = ImgUtils._remove_black_background(cropped_img2)
-            cropped_img2.close()
-            alpha_mask = transparent_img.split()[3]
-            final_masked_img = cropped_img.copy()
-            final_masked_img.putalpha(alpha_mask)
-            cropped_img.close()
-            alpha_mask.close()
-            transparent_img.close()
+            cropped_img = full_stack_img.copy(local_x1, local_y1, w_final, h_final)
+            cropped_img2 = full_stack_img2.copy(local_x1, local_y1, w_final, h_final)
 
-            rgba_bytes = final_masked_img.tobytes("raw", "RGBA")
-            final_masked_img.close()
+            transparent_q = ImgUtils._remove_black_background_qimg(cropped_img2)
+
+            final_masked_img = QImage(w_final, h_final, QImage.Format_ARGB32_Premultiplied)
+            final_masked_img.fill(Qt.transparent)
+
+            painter = QPainter(final_masked_img)
+
+            painter.drawImage(0, 0, cropped_img)
+
+            painter.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+            painter.drawImage(0, 0, transparent_q)
+
+            painter.end()
 
             default_x = target_crop_bounds.left
             default_y = target_crop_bounds.top
 
-
-
             if self.bridge is not None:
-                self.bridge.toast_captured.emit(rgba_bytes, w_final, h_final, default_x, default_y, TARGET_AUMID)
+                self.bridge.toast_captured.emit(final_masked_img, w_final, h_final, default_x, default_y, TARGET_AUMID)
         finally:
             ctypes.windll.ole32.CoUninitialize()
 
-    def on_toast_data_received(self, rgba_bytes, w, h, x, y, target_aumid):
+    def on_toast_data_received(self, q_img, w, h, x, y, target_aumid):
         """Triggered on the main thread when a background worker finishes cloning."""
-        q_img = QImage(rgba_bytes, w, h, QImage.Format_RGBA8888)
         pixmap = QPixmap.fromImage(q_img)
 
         toast_window = QLabel()
@@ -224,7 +229,7 @@ class ToastManager:
         toast_window.show()
 
         self.active_toasts.append(toast_window)
-        QTimer.singleShot(10, lambda: ToastNotificationManager.history.clear_with_id(target_aumid)) #wait 1 qt refresh frame before clearing the real notification
+        QTimer.singleShot(10, lambda: ToastNotificationManager.history.clear_with_id(target_aumid))  # wait 1 qt refresh frame before clearing the real notification
         self.start_constant_speed_trajectory(toast_window, x, y, w, h)
 
     def start_constant_speed_trajectory(self, window_handle, start_x, start_y, w, h):
@@ -370,4 +375,3 @@ class ToastManager:
         """Spawns an isolated background thread to pipeline windows_toasts securely."""
         t = threading.Thread(target=self.spawn_and_clone_worker, args=(title, body), daemon=True)
         t.start()
-        

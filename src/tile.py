@@ -4,8 +4,11 @@ Tile class for visual effects and particles
 
 import random
 
+
 class Tile:
     """Represents a tile/particle for visual effects"""
+
+    __slots__ = ("img", "x", "y", "vx", "vy", "alpha", "angle", "angvel", "fade_step")
 
     def __init__(self, img, x, y, fade_step=1):
         """
