@@ -1,31 +1,24 @@
-"""
-Visual Effects Manager Module
+"""Visual Effects Manager Module
 
-Manages particle systems and visual effects including:
-- Laser effects with fade animations
-- Particle types (sparkles, rings, blood, etc.)
-- Visual effect rendering and updates
-- Warning overlays for combat events
-"""
+Overlay and engine for rendering combat related vfx:
+- Maintains a live list of Particle objects and Laser beams.
+- updates their physics and lifetimes on a fixed timer, and draws them using additive blending, offset by a ScreenShaker for camera shake effects.
+- helper methods for spawning effect types while ensuring that timers and resources are properly cleaned up when deinitialized."""
 
 import math
 import os
 import random
-import time
 import sys
 from ctypes import c_bool, c_uint32, c_void_p, windll
 
 import win32api
 from PyQt5.QtCore import (
-    QEasingCurve,
     QPointF,
-    QRect,
     QRectF,
     Qt,
     QTimer,
-    QVariantAnimation,
 )
-from PyQt5.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PyQt5.QtGui import QColor, QPainter, QPen, QPixmap
 from PyQt5.QtWidgets import QWidget
 
 from constants import SharkoConstants
@@ -35,8 +28,7 @@ class Laser:
     """Laser beam visual effect with fade in/out animation."""
 
     def __init__(self, x, y, angle, color=QColor(0, 120, 255), start_offset=50):
-        """Initialize a laser effect.
-        """
+        """Initialize a laser effect."""
         self.origin         = QPointF(float(x), float(y))
         self.angle          = angle
         self.color          = color
@@ -96,8 +88,7 @@ class Particle:
     }
 
     def __init__(self, x, y, p_type, pixmap=None):
-        """Initialize a particle with type-specific properties and physics.
-        """
+        """Initialize a particle with type-specific properties and physics."""
         self.pos = QPointF(float(x), float(y))
         self.pixmap = pixmap
         self.p_type = p_type
@@ -251,6 +242,10 @@ class VFXManager(QWidget):
     }
 
     def __init__(self, damage_callback=None, screen_shaker=None):
+        """Initialize the vfx manager widget:
+        - Window flags.
+        - Load assets.
+        - Setup periodic update timer."""
         super().__init__()
 
         self.screen_shaker = screen_shaker
@@ -283,19 +278,20 @@ class VFXManager(QWidget):
         self.timer.start(16)
 
     def _load_assets(self):
+        """Load particle texture pixmaps from disk and apply a tint for ring and spark assets."""
         asset_map = {
-            "sparkle1": "../assets/particles/sparkle1.png",
-            "sparkle2": "../assets/particles/sparkle2.png",
-            "sparkle3": "../assets/particles/sparkle3.png",
-            "spark": "../assets/particles/spark.png",
-            "ring": "../assets/particles/ring.png",
-            "ringportion": "../assets/particles/ringportion.png",
-            "star1": "../assets/particles/star1.png",
-            "unparryable_glyph": "../assets/particles/unparryable_glyph.png",
-            "unparryable_outline": "../assets/particles/unparryable_outline.png",
-            "unblockable_glyph": "../assets/particles/unblockable_glyph.png",
-            "unblockable_outline": "../assets/particles/unblockable_outline.png",
-            "falling_sharko": "../assets/sharko/falling.png",
+            "sparkle1": "../../assets/particles/sparkle1.png",
+            "sparkle2": "../../assets/particles/sparkle2.png",
+            "sparkle3": "../../assets/particles/sparkle3.png",
+            "spark": "../../assets/particles/spark.png",
+            "ring": "../../assets/particles/ring.png",
+            "ringportion": "../../assets/particles/ringportion.png",
+            "star1": "../../assets/particles/star1.png",
+            "unparryable_glyph": "../../assets/particles/unparryable_glyph.png",
+            "unparryable_outline": "../../assets/particles/unparryable_outline.png",
+            "unblockable_glyph": "../../assets/particles/unblockable_glyph.png",
+            "unblockable_outline": "../../assets/particles/unblockable_outline.png",
+            "falling_sharko": "../../assets/sharko/falling.png",
         }
         for key, rel_path in asset_map.items():
             full_path = os.path.join(self.script_dir, rel_path)
@@ -312,6 +308,7 @@ class VFXManager(QWidget):
                 self.textures[key] = tinted
 
     def set_laser(self, laser_id, x, y, angle, color=QColor(0, 150, 255), offset=0):
+        """Create or update a laser instance with given origin, angle, color, and offset."""
         if laser_id not in self.lasers:
             self.lasers[laser_id] = Laser(x, y, angle, color, start_offset=offset)
         else:
@@ -321,6 +318,7 @@ class VFXManager(QWidget):
                 lazer.state = "fading_in"
 
     def remove_laser(self, laser_id):
+        """Mark a laser to begin fading out instead of being active."""
         if laser_id in self.lasers:
             self.lasers[laser_id].state = "fading_out"
 
@@ -370,6 +368,7 @@ class VFXManager(QWidget):
         self.particles.append(particle)
 
     def update_vfx(self):
+        """One tick for all particles and lasers, perform collision detection for falling Sharko, then call repaint."""
         # Get mouse position for collision detection
         mouse_x, mouse_y = win32api.GetCursorPos()
 
@@ -411,7 +410,7 @@ class VFXManager(QWidget):
             del self.lasers[lid]
         # Maintain z-order on top of Sharko window
         self.raise_()
-        self.update()
+        self.update()  # call paint event
 
     def deinitialize(self):
         """Properly clean up all resources before deletion."""
@@ -431,6 +430,7 @@ class VFXManager(QWidget):
         self.deleteLater()
 
     def paintEvent(self, event):
+        """Render all lasers and particles onto the vfx overlay using additive blending."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setCompositionMode(QPainter.CompositionMode_Plus)
@@ -472,259 +472,3 @@ class VFXManager(QWidget):
     def draw_textured_pixmap(self, p, painter):
         w, h = p.pixmap.width() * p.scale, p.pixmap.height() * p.scale
         painter.drawPixmap(QRectF(-w / 2, -h / 2, w, h), p.pixmap, QRectF(p.pixmap.rect()))
-
-
-class WarningInstance:
-    """Helper class to track individual warning states."""
-
-    def __init__(self, rect, duration_ms, parent_update_func, on_complete=None):
-        self.rect = rect
-        self.opacity = 0
-        self.is_fading_out = False
-        self.exit_timer = None  # Store timer reference for cleanup
-        self.on_complete = on_complete  # Callback when warning expires
-        self.deleted = False
-
-        self.anim = QVariantAnimation()
-        self.anim.setDuration(300)
-        self.anim.setStartValue(0)
-        self.anim.setEndValue(180)
-        self.anim.setEasingCurve(QEasingCurve.InOutSine)
-
-        self.anim.valueChanged.connect(self.update_val)
-        self.update_callback = parent_update_func
-
-        self.anim.finished.connect(self.loop_logic)
-        self.anim.start()
-
-        self.exit_timer = QTimer()
-        self.exit_timer.setSingleShot(True)
-        self.exit_timer.timeout.connect(self.start_exit)
-        self.exit_timer.start(duration_ms)
-
-    def update_val(self, val):
-        self.opacity = val
-        self.update_callback()
-
-    def loop_logic(self):
-        if self.is_fading_out and self.anim.direction() == QVariantAnimation.Backward:
-            self.opacity = -1
-            if self.on_complete:
-                self.on_complete()
-            return
-
-        new_dir = QVariantAnimation.Backward if self.anim.direction() == QVariantAnimation.Forward else QVariantAnimation.Forward
-        self.anim.setDirection(new_dir)
-        self.anim.start()
-
-    def start_exit(self):
-        self.exit_timer.deleteLater()
-        self.is_fading_out = True
-
-    def cleanup(self):
-        """Clean up timers and animations."""
-        try:
-            if self.exit_timer:
-                self.exit_timer.stop()
-                try:
-                    self.exit_timer.timeout.disconnect()
-                except (RuntimeError, TypeError):
-                    pass
-                self.exit_timer.deleteLater()
-                self.exit_timer = None
-        except (RuntimeError, AttributeError):
-            pass
-        try:
-            self.anim.stop()
-            try:
-                self.anim.valueChanged.disconnect(self.update_val)
-            except (RuntimeError, TypeError):
-                pass
-            try:
-                self.anim.finished.disconnect(self.loop_logic)
-            except (RuntimeError, TypeError):
-                pass
-            self.anim.deleteLater()
-            self.anim = None
-        except (RuntimeError, TypeError, AttributeError):
-            pass
-
-
-class MultiWarningOverlay(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.WindowStaysOnTopHint
-            | Qt.WindowTransparentForInput
-            | Qt.Tool
-        )
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1) - 1)
-        self.show()
-
-        self.active_warnings = []
-
-    def trigger_warning(self, width, height, duration_ms, x, y, on_complete=None):
-        rect = QRect(x, y, width, height)
-
-        new_warning = WarningInstance(rect, duration_ms, self.update, on_complete)
-        self.active_warnings.append(new_warning)
-
-    def paintEvent(self, event):
-        # Maintain z-order on top of Sharko window
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setCompositionMode(QPainter.CompositionMode_Source)
-
-        for i in range(len(self.active_warnings) - 1, -1, -1):
-            w_inst = self.active_warnings[i]
-
-            if w_inst.opacity == -1:
-                self.active_warnings.pop(i)
-                continue
-
-            color = QColor(255, 0, 0, w_inst.opacity)
-            rect = w_inst.rect
-            x, y, w, h = rect.getRect()
-
-            # Draw Stripes
-            painter.save()
-            painter.setClipRect(rect)
-            painter.setPen(QPen(color, 5, Qt.SolidLine, Qt.FlatCap))
-            for j in range(-h, w + h, 25):
-                painter.drawLine(x + j, y, x + j + h, y + h)
-            painter.restore()
-
-            # Draw Border
-            painter.setPen(QPen(color, 4, Qt.SolidLine, Qt.FlatCap, Qt.MiterJoin))
-            painter.drawRect(rect)
-
-    def deinitialize(self):
-        """Properly clean up all warning animations before deletion."""
-        for w in self.active_warnings:
-            w.cleanup()
-        self.active_warnings.clear()
-        self.deleteLater()
-
-
-class ScreenShaker(QWidget):
-    def __init__(self):
-        super().__init__()
-        import dxcam  # Uses a LOT of memory, so only import if it's actually ever used. Large ~25 mb decrease in ram if not imported.
-
-        user32 = windll.user32
-        user32.SetWindowDisplayAffinity.argtypes = [c_void_p, c_uint32]
-        user32.SetWindowDisplayAffinity.restype = c_bool
-        self.camera = dxcam.create(max_buffer_len=1, output_color="BGRA")
-
-        self.width = user32.GetSystemMetrics(0)
-        self.height = user32.GetSystemMetrics(1)
-
-        self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.WindowTransparentForInput
-            | Qt.WindowStaysOnTopHint
-            | Qt.Tool
-        )
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(0, 0, self.width, self.height - 1)
-        user32.SetWindowDisplayAffinity(int(self.winId()), SharkoConstants.WDA_EXCLUDEFROMCAPTURE)
-        self.captured_image = None
-        self.current_frame = None
-        self.intensity = 0
-        self.start_time = 0
-        self.duration = 0
-
-        self.loop_timer = QTimer(self)
-        self.loop_timer.timeout.connect(self.process_shake_step)
-
-        self.offset_x = 0
-        self.offset_y = 0
-
-    def shake(self, duration_ms=450, intensity=30):
-
-        self.intensity = intensity
-        self.duration = duration_ms / 1000.0
-
-        self.start_time = time.time()
-        self.show()
-
-        self.loop_timer.start(30)
-
-    def process_shake_step(self):
-        elapsed = time.time() - self.start_time
-
-        if elapsed >= self.duration:
-            self.stop_and_reset()
-            return
-
-        frame = self.camera.grab_view()
-        if frame is not None:
-            # 1. Keep a strong reference to the frame array so its memory address stays valid
-            self.current_frame = frame
-
-            height, width, channels = frame.shape
-            bytes_per_line = channels * width
-
-            # 2. Build the zero-copy QImage wrapper. Use Format_ARGB32 to match raw DXcam BGRA.
-            self.captured_image = QImage(
-                self.current_frame.data,
-                width,
-                height,
-                bytes_per_line,
-                QImage.Format_ARGB32
-            )
-
-        progress = elapsed / self.duration
-
-        decay = math.exp(-4.5 * progress)
-        current_intensity = self.intensity * decay
-        t_ms = elapsed * 1000.0
-        frequency_multiplier = 1.0 + (progress * 1.5)
-
-        speed_x = 0.01 * frequency_multiplier
-        speed_y = 0.02 * frequency_multiplier
-        randomness = 0.35
-
-        sin_wave = math.sin(t_ms * speed_x) * current_intensity
-        cos_wave = math.cos(t_ms * speed_y) * current_intensity
-        rand_noise_x = random.uniform(-current_intensity, current_intensity) * randomness
-        rand_noise_y = random.uniform(-current_intensity, current_intensity) * randomness
-
-        self.offset_x = int(sin_wave + rand_noise_x)
-        self.offset_y = int(cos_wave + rand_noise_y)
-        self.raise_()
-        self.particles_manager.raise_()
-        self.update()
-
-    def stop_and_reset(self):
-        self.loop_timer.stop()
-        self.captured_image = None
-        self.current_frame = None
-        self.offset_x = 0
-        self.offset_y = 0
-        self.hide()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        if not self.captured_image:
-            painter.fillRect(0, 0, self.width, self.height, Qt.transparent)
-            return
-
-        painter.fillRect(0, 0, self.width, self.height, Qt.black)
-        painter.drawImage(self.offset_x, self.offset_y, self.captured_image)
-
-    def deinitialize(self):
-        if hasattr(self, "loop_timer") and self.loop_timer:
-            self.loop_timer.stop()
-            self.loop_timer.deleteLater()
-            self.loop_timer = None
-        if hasattr(self, "camera") and self.camera:
-            self.camera.release()
-            self.camera = None
-        self.particles_manager = None
-        self.captured_image = None
-        self.current_frame = None
-        self.hide()
-        self.deleteLater()

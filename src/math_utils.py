@@ -11,9 +11,7 @@ class MathUtils:
 
     @staticmethod
     def quadratic_bezier_through_point(P0, Pmid, P2, tm=0.5):
-        """
-        Returns a function B(t) for a quadratic Bézier that passes through Pmid at t=tm.
-        """
+        """Returns a function B(t) for a quadratic Bézier that passes through Pmid at t=tm."""
         P0 =   np.asarray(P0, dtype=float)
         Pmid = np.asarray(Pmid, dtype=float)
         P2 =   np.asarray(P2, dtype=float)
@@ -36,9 +34,7 @@ class MathUtils:
 
     @staticmethod
     def _simpson_integral(f, a=0.0, b=1.0, n=1000):
-        """
-        Simpson's rule for numerical integration, n must be even.
-        """
+        """Simpson's rule for numerical integration, n must be even."""
         if n % 2 == 1:
             n += 1
         x = np.linspace(a, b, n + 1)
@@ -48,9 +44,7 @@ class MathUtils:
 
     @staticmethod
     def quadratic_length(P0, P1, P2, n=2000):
-        """
-        Calculate arc length of a quadratic Bezier curve.
-        """
+        """Calculate arc length of a quadratic Bezier curve."""
         P0 = np.asarray(P0, float)
         P1 = np.asarray(P1, float)
         P2 = np.asarray(P2, float)
@@ -64,9 +58,7 @@ class MathUtils:
 
     @staticmethod
     def calculate_jump_trajectory(start_x, start_y, peak_x, peak_y, end_x, end_y, speed):
-        """
-        Calculate jump trajectory points for animation.
-        """
+        """Calculate jump trajectory points for animation."""
         P0      = (start_x, start_y)
         Pmid    = (peak_x, peak_y)
         P2      = (end_x, end_y)

@@ -122,6 +122,7 @@ class ImgUtils:
 
     @staticmethod
     def tint_pixmap(pixmap, color):
+        """Apply a color tint to a pixmap using multiplicative and masking composition modes."""
         painter = QPainter(pixmap)
         original = QPixmap(pixmap)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Multiply)
@@ -132,6 +133,7 @@ class ImgUtils:
 
     @staticmethod
     def _remove_black_background_qimg(qimg):
+        """Remove near black background pixels from a qimage by manipulating its argb data as a numpy array."""
         qimg = qimg.convertToFormat(QImage.Format_ARGB32)
         h, w = qimg.height(), qimg.width()
 

@@ -25,11 +25,13 @@ from img_utils          import ImgUtils
 
 
 class ToastBridge(QObject):
+    """Signal emitted when a toast has been captured and processed into an image."""
     toast_captured = pyqtSignal(QImage, int, int, int, int, str)  # rgba_bytes, width, height, x, y, target_aumid
 
 
 class ToastManager:
     def __init__(self, damage_callback=None):
+        """Set up flags and wire the bridge signal"""
         toast_bridge = ToastBridge()
         toast_bridge.toast_captured.connect(self.on_toast_data_received)
         self.bridge = toast_bridge
@@ -39,6 +41,13 @@ class ToastManager:
 
     @staticmethod
     def _capture_window(hwnd, capture_full_window=True):
+        """Captures a window or desktop region into a QImage using Win32 GDI apis.
+        - Gets the window rectangle.
+        - Allocates a compatible bitmap and DC.
+        - Either uses PrintWindow or BitBlt to copy pixels.
+        - Validates the bitmap size.
+        - Constructs a QImage from raw BGRA bits.
+        - Finally deletes all GDI objects and releases the DC's before returning the image and origin coordinates."""
         rect = win32gui.GetWindowRect(hwnd)
         x1, y1, x2, y2 = rect
         w, h = x2 - x1, y2 - y1
@@ -120,9 +129,7 @@ class ToastManager:
         return q_img, x1, y1
 
     def spawn_and_clone_worker(self, title, body):
-        """Runs isolated inside a separate Thread. Initializes STA COM,
-        fires windows-toasts, captures it, and passes graphics data via signals.
-        """
+        """Run in a background thread to show a Windows toast, locate its UI Automation element, capture it, and build a masked image."""
         ctypes.windll.ole32.CoInitializeEx(None, SharkoConstants.COINIT_APARTMENTTHREADED)
 
         try:
@@ -248,8 +255,7 @@ class ToastManager:
         perpy = base_dx / base_dist
 
         pixel_speed_per_frame = 32.5
-        total_frames = int(base_dist / pixel_speed_per_frame)
-
+        total_frames = max(1, int(base_dist / pixel_speed_per_frame))
         screen_w = win32api.GetSystemMetrics(0)
         screen_h = win32api.GetSystemMetrics(1)
         screen_diag = math.hypot(screen_w, screen_h)

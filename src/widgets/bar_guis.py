@@ -35,11 +35,11 @@ from img_utils import ImgUtils
 # Ensure these files exist in your project folder
 
 
-class ScalableHealthBar(QWidget):
-    """Scalable health bar widget for boss battles with animations and effects."""
+class ScalableCombatBars(QWidget):
+    """Scalable bars widget for boss battles with animations and effects."""
 
     def __init__(self, parent=None, bar_height_scale=0.18, target_obj=None):
-        """Initialize the health bar with transparent background and animations."""
+        """Initialize the a object for the bar overlays and pre-tint images."""
         super().__init__(parent)
 
         self.setWindowFlags(
@@ -111,6 +111,7 @@ class ScalableHealthBar(QWidget):
         self.update()
 
     def slide_in(self):
+        """Animate the offset that slides the bars into view from offscreen."""
         self._bb_pos_animation.stop()
 
         self.show()
@@ -119,6 +120,7 @@ class ScalableHealthBar(QWidget):
         self._bb_pos_animation.start()
 
     def slide_out_to_hide(self):
+        """Animate the offset that slides the bars out of view, and then destroy the scalable bars object."""
         self._bb_pos_animation.stop()
         self.animation_timer.stop()
 
@@ -159,7 +161,7 @@ class ScalableHealthBar(QWidget):
             self.current_plrb_percentage = self.plrb_percentage
 
     def paintEvent(self, event):
-        """Render the health bar with background, fill, markers, icon, and text."""
+        """Call functions to render all 3 bars."""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
@@ -168,6 +170,7 @@ class ScalableHealthBar(QWidget):
         self._paint_player_health_bar(painter)
 
     def _paint_boss_bar(self, painter):
+        """Draw the horizontal boss health bar background, fill, border, pins, skull icon, and name text."""
         # Dimensions
         w = self.width() // 2
         h = max(8, int(self.height() * self.bar_height_scale))
@@ -231,6 +234,7 @@ class ScalableHealthBar(QWidget):
         painter.fillPath(path, QColor(255, 255, 255))
 
     def _paint_posture_bar(self, painter):
+        """Draw the vertical posture bar background, fill, border, and pins."""
         h = int(2 * self.height() // (16 / 5))
         y_offset = int(self.height() // (16 / 3))
         x_offset = self._boss_bar_canvas_offset.y()
@@ -269,6 +273,7 @@ class ScalableHealthBar(QWidget):
             painter.drawPixmap(QRect(x_offset, m_y + y_offset, mw, mh), self.pb_pin_img)
 
     def _paint_player_health_bar(self, painter):
+        """Draw the vertical player health bar background, fill, border, and pins."""
         h = 2 * self.height() // 3
         y_offset = self.height() // 6
         x_offset = self._boss_bar_canvas_offset.y() - int(h * 0.1)

@@ -9,6 +9,7 @@ Provides Windows desktop manipulation utilities for:
 """
 
 import ctypes
+import ctypes.wintypes
 import os
 import time
 import pythoncom
@@ -37,7 +38,7 @@ class WindowsUtils:
 
     @staticmethod
     def disable_desktop_grid_and_autoarrange_universal():
-
+        """Disable auto arrange and snap to grid settings for the desktop icon list view view using Win32 apis."""
         desktop_shell_view = [0]
 
         def enum_windows_callback(hwnd, extra):
@@ -88,7 +89,7 @@ class WindowsUtils:
 
     @staticmethod
     def cache_desktop_handles():
-        """Maps out the workspace wallpaper window handles cleanly."""
+        """Caches out the workspace wallpaper window handles."""
         global _cached_desktop_hwnds
         _cached_desktop_hwnds.clear()
 
@@ -110,6 +111,7 @@ class WindowsUtils:
 
     @staticmethod
     def should_supress_click():
+        """Determine whether a mouse click should be suppressed based on whether it is over the desktop area."""
         cursor_pos = win32gui.GetCursorPos()
         hwnd_under_cursor = win32gui.WindowFromPoint(cursor_pos)
 
@@ -125,6 +127,7 @@ class WindowsUtils:
 
     @staticmethod
     def are_notifications_enabled():
+        """Check the Windows registry to see if toast notifications are enabled."""
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, SharkoConstants.PUSH_NOTIFICATIONS_REG_PATH) as key:
                 value, _ = winreg.QueryValueEx(key, "ToastEnabled")
@@ -137,6 +140,7 @@ class WindowsUtils:
 
     @staticmethod
     def get_work_area_height():
+        """Query the usable vertical height of the desktop work area excluding taskbars."""
         desktop_working_area = ctypes.wintypes.RECT()
         ctypes.windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETWORKAREA, 0, ctypes.byref(desktop_working_area), 0)
         return desktop_working_area.bottom - desktop_working_area.top
@@ -307,7 +311,7 @@ class WindowsUtils:
 
     @staticmethod
     def create_shortcut(hwnd_lv, base_path="assets/"):
-        """Create a new desktop shortcut"""
+        """Ask windows to create a new desktop shortcut and wait for it to be created"""
         desktop = winshell.desktop()
         base_name = "Destroyman III"
         extension = ".lnk"

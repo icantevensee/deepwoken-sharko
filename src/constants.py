@@ -129,6 +129,7 @@ class SharkoConstants:
     LVM_SETITEMPOSITION     = 0x100F
     LVM_GETITEMCOUNT        = 0x1004
     LVM_GETITEMW            = 0x1000 + 75
+    LVM_GETITEMSPACING      = 0x1033
     LVIF_TEXT               = 0x0001
     LVM_GETITEMTEXTW        = 0x1000 + 115
     LVM_FIRST               = 0x1000

@@ -6,19 +6,19 @@ Provides functionality to move desktop icons in trajectories
 with collision detection and hit registration.
 """
 
-import                      math
-import                      time
+import                                         math
+import                                         time
 
-import                      threading
+import                                         threading
 
-import                      pythoncom
-import                      win32api
-import                      win32gui
-from win32com.shell  import shellcon  # type: ignore
+import                                         pythoncom
+import                                         win32api
+import                                         win32gui
+from win32com.shell                     import shellcon  # type: ignore
 
-from boss_battle     import CombatSystem
-from constants       import SharkoConstants
-from windows_utils   import WindowsUtils
+from boss_battle                        import CombatSystem
+from constants                          import SharkoConstants
+from windows_interactive.windows_utils  import WindowsUtils
 
 throw_lock = threading.Lock()
 
@@ -27,12 +27,13 @@ class IconManager:
     """Manages desktop icon throwing and trajectory animation."""
 
     def _throw_worker(self, index, target_pos, speed_factor, name):
-        """Worker thread for icon throwing animation with collision detection.
-        """
+        """Worker thread for icon-throw trajectory in a background thread, includes:
+        - COM initialization.
+        - Icon lookup and verification to make sure icon index has not changed since the last animation step.
+        - Animation over time split into a arced throw section, and then a bobbing section once the target position has been achieved."""
         pythoncom.CoInitialize()
         with throw_lock:
             if name in self.thrown_icons:
-                pythoncom.CoUninitialize()
                 return
             self.thrown_icons.add(name)
         try:
@@ -49,8 +50,6 @@ class IconManager:
             except Exception:
                 with throw_lock:
                     self.thrown_icons.discard(name)
-
-                pythoncom.CoUninitialize()
                 return
             item_name = name
             start_pos = folder_view.GetItemPosition(item)
@@ -62,7 +61,7 @@ class IconManager:
             screen_w = win32api.GetSystemMetrics(0)
             screen_h = win32api.GetSystemMetrics(1)
 
-            spacing = win32gui.SendMessage(hwnd_lv, 0x1033, 0, 0)
+            spacing = win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMSPACING, 0, 0)
             cell_h = (spacing >> 16) & 0xFFFF
 
             end_x = mousex - cell_h**1.2 * 0.10
@@ -95,8 +94,6 @@ class IconManager:
                     if index == -1:
                         with throw_lock:
                             self.thrown_icons.discard(name)
-
-                        pythoncom.CoUninitialize()
                         return
 
                 t = i / steps
@@ -128,7 +125,6 @@ class IconManager:
                     if index == -1:
                         with throw_lock:
                             self.thrown_icons.discard(name)
-                        pythoncom.CoUninitialize()
                         return
 
                 t = (i / bob_steps) ** 0.8
@@ -153,6 +149,7 @@ class IconManager:
             pythoncom.CoUninitialize()
 
     def throw_shortcut(self, index, target_pos, speed_factor, name):
+        """Spawns a daemon thread that runs _throw_worker and forwards parameters."""
         thread = threading.Thread(
             target=self._throw_worker,
             args=(index, target_pos, speed_factor, name),
@@ -162,6 +159,7 @@ class IconManager:
 
     @staticmethod
     def get_closest_icons(n):
+        """Computes the indices of the desktop icons closest to the current mouse position using COM and list view geometry."""
         pythoncom.CoInitialize()
         try:
             folder_view, _ = WindowsUtils.get_desktop_interfaces(

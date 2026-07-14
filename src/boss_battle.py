@@ -10,23 +10,27 @@ import      numpy as np
 import      random
 import      os
 
-import                     win32api
-import                     win32gui
+import      win32api
+import      win32gui
 
-from ctypes         import windll
-from PyQt5.QtGui    import QPixmap, QPainter
-from PyQt5.QtCore   import QTimer, Qt
+from ctypes                             import windll
+from PyQt5.QtGui                        import QPixmap, QPainter
+from PyQt5.QtCore                       import QTimer, Qt
 
-from math_utils     import MathUtils
-from windows_utils  import WindowsUtils
+from math_utils                         import MathUtils
+from windows_interactive.windows_utils  import WindowsUtils
 
-from widgets        import SwordWindow
+from widgets.sword_window               import SwordWindow
 
 
 class CombatSystem():
 
     @staticmethod
-    def damage(self, attack_type):  # @staticmethod is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument
+    def damage(self, attack_type):
+        """- Applies damage or posture changes based on current parry/block state and the given attack type.
+           - Plays block/parry/hit sounds and spawns block/parry/blood particles as appropriate.
+           - @staticmethod is needed because unlike lua, we don't have . to use self, and : to not to use self, python always passes self as the first argument,
+           since this is being called from self.damage andd CombatSystem.damage, we need to make it a static method and pass self explicitly."""
         if not hasattr(self, "particles_manager"):
             return
         current_time = time.time()
@@ -82,6 +86,7 @@ class CombatSystem():
         self.sounds_group["hit"].play(volume=self.sound_volume)
 
     def damage_sharko(self):
+        """Reduces the boss’s health and updates the boss bar. Also plays sharko-blood particles and hit sound when the mouse attack hits Sharko."""
         if not hasattr(self, "particles_manager"):
             return
         self.bar_guis.boss_health -= self.M1_DAMAGE
@@ -91,6 +96,7 @@ class CombatSystem():
         self.sounds_group["hit"].play(volume=self.sound_volume)
 
     def mouse_attack(self, x, y):
+        """Checks whether a click is within Destroyman III's hitbox which changes based on the way it's facing and, if so, calls damage_sharko."""
         sprite_x, sprite_y = None, None
         current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
         if self.current_facing == "Left":
@@ -103,6 +109,7 @@ class CombatSystem():
             CombatSystem.damage_sharko(self)
 
     def jump(self, jump_end, speed, on_complete=None):
+        """Executes a full jump animation for Sharko, including bezier trajectory, sprite frame selection based on slope, and hit detection against the mouse."""
         if not self.fight_mode_active:
             return
         if hasattr(self, "temp_combat_timer") and self.temp_combat_timer:
@@ -208,6 +215,7 @@ class CombatSystem():
         step_move()
 
     def jump_and_hit(self, jump_peak, shortcut, speed, on_complete=None):
+        """Jump animation but coordinated with a desktop shortcut. jumps with the peak of curve at an icon's position and asks icon manager to launch it."""
         self.jump_images = {
             "jump1": QPixmap(os.path.join(self.IMAGES_PATH, "jump1.png")),
             "jump2": QPixmap(os.path.join(self.IMAGES_PATH, "jump2.png")),
@@ -342,6 +350,10 @@ class CombatSystem():
         step_move()
 
     def lazer(self, duration_ms, on_complete=None):
+        """Qpainter based rendering lazer attack:
+           - Pivots the head of a sprite to always face mouse, also moving body if head range of movement is exceeded.
+           - Creates and positions a lazer beam object via vfx manager.
+           - Does damage to the player."""
         self._lazer_body = QPixmap(os.path.join(self.IMAGES_PATH, "Pivot_Body.png"))
         self._lazer_face = QPixmap(os.path.join(self.IMAGES_PATH, "Pivot_Face.png"))
         self._lazer_corals = QPixmap(os.path.join(self.IMAGES_PATH, "Pivot_Corals.png"))
@@ -510,6 +522,10 @@ class CombatSystem():
         self.temp_combat_timer.start(30)
 
     def area_belly_flop(self, warning_time, num_subdivisions, num_subdivisions_to_attack, work_area_height, on_complete=None):
+        """Performs a multi-stage attack using lambdas and callbacks:
+           - Jump out, display warning stripes via the multi warning overlay.
+           - Spawn falling-sharko particles over lethal subdivisions.
+           - Jump back."""
         original_x = self.window.geometry().x()
         jump_end = -400 if original_x < self.screen_x // 2 else self.screen_x + 400
         groups = []
@@ -577,17 +593,20 @@ class CombatSystem():
         )
 
     def toast_attack(self, on_complete=None):
+        """Triggers a toast-based attack with toast manager."""
         self.toast_manager.trigger_toast_async(random.choice(self.TOAST_TEXT["titles"]), random.choice(self.TOAST_TEXT["descriptions"]))
         if on_complete:
             self._single_shot(2000, on_complete)
 
     def summon_sword(self):
+        """Creates a sword window if not already present."""
         if hasattr(self, "sword_window") and self.sword_window:
             return
         self.sword_window = SwordWindow(lambda: self.current_facing, damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type))
         self.sword_window.initialize(self.window)
 
     def sword_combo(self, num_attacks):
+        """Creates a sword combo sequence by scheduling sword attacks at one second intervals and then returning the sword to following the Sharko window."""
         if not hasattr(self, "sword_window") or not self.sword_window:
             return
 

@@ -4,31 +4,29 @@ combat AI for Sharko.
 Main fight loop functionality and descision making.
 """
 
-import                         random
+import                                         random
 
-from PyQt5.QtCore       import QTimer
+from PyQt5.QtCore                       import QTimer
 
-import                         win32api
-import                         win32gui
+import                                         win32api
+import                                         win32gui
 
-from windows_utils      import WindowsUtils
-from boss_battle        import CombatSystem
+from windows_interactive.windows_utils  import WindowsUtils
+from boss_battle                        import CombatSystem
 
 
 class SharkoCombatAI:
 
     def __init__(self, sharko):
+        """Initialize the combat ai with tiered attack lists."""
         self.sharko = sharko
         self.tier_1_attacks = [self._jump_and_attack, self._do_area_belly_flop]
         self.tier_2_attacks = [self._toast_attack, self._do_laser]
         self.tier_3_attacks = []
         self.all_attacks = (self.tier_1_attacks + self.tier_2_attacks + self.tier_3_attacks)
 
-    def choose_and_execute_action(self):
-
-        pass
-
     def run_fight_loop_tick(self):
+        """Executes one iteration of the descision making loop."""
 
         random_attack = random.choice(self.all_attacks)
 
@@ -42,6 +40,7 @@ class SharkoCombatAI:
         current_idle_frame = 0
 
         def play_idle_frame(current_frame):
+            """Plays an animated idle sequence between boss attacks and schedules the next descision making iteration."""
             if current_frame == num_idle_frames:
                 # After idle, schedule the next fight_loop on Sharko
                 if sharko.fight_loop_timer:

@@ -21,29 +21,33 @@ import      sys
 
 import      threading
 
-from pynput             import keyboard, mouse
-import keyboard as             blocker_keyboard
+from pynput                             import keyboard, mouse
+import keyboard as                             blocker_keyboard
 
-from PyQt5.QtMultimedia import QMediaPlayer, QMediaContent
-from PyQt5.QtWidgets    import QApplication, QWidget, QVBoxLayout, QMenu, QWidgetAction
-from PyQt5.QtGui        import QPixmap, QPainter, QTransform, QFontDatabase
-from PyQt5.QtCore       import Qt, QTimer, QObject, pyqtSignal, QUrl
+from PyQt5.QtMultimedia                 import QMediaPlayer, QMediaContent
+from PyQt5.QtWidgets                    import QApplication, QWidget, QVBoxLayout, QMenu, QWidgetAction
+from PyQt5.QtGui                        import QPixmap, QPainter, QTransform, QFontDatabase
+from PyQt5.QtCore                       import Qt, QTimer, QObject, pyqtSignal, QUrl
 
-from bar_guis           import ScalableHealthBar
-from vfx_manager        import VFXManager, MultiWarningOverlay, ScreenShaker
-from boss_battle        import CombatSystem
-from boss_ai            import SharkoCombatAI
+from widgets.bar_guis                   import ScalableCombatBars
+from vfx.vfx_manager                    import VFXManager
+from vfx.warnings_manager               import MultiWarningOverlay
+from vfx.screen_shaker                  import ScreenShaker
+from vfx.tile                           import Tile
 
-from constants          import SharkoConstants
-from icons              import IconManager
-from toasts             import ToastManager
-from windows_utils      import WindowsUtils
-from tile               import Tile
+from boss_battle                        import CombatSystem
+from boss_ai                            import SharkoCombatAI
 
-from widgets            import SharkoLabel, MenuStyle, VolumeSlider
-from img_utils          import ImgUtils
+from constants                          import SharkoConstants
+from windows_interactive.icons          import IconManager
+from windows_interactive.toasts         import ToastManager
+from windows_interactive.windows_utils  import WindowsUtils
 
-import                         psutil
+from widgets.base_components            import SharkoLabel, MenuStyle, VolumeSlider
+
+from img_utils                          import ImgUtils
+
+import                                          psutil
 
 
 # Enable dpi scaling
@@ -81,7 +85,7 @@ class PitchedSound(QObject):
         self.active_players = set()
 
     def play(self, volume=1.0):
-        """Plays the sound effect. Zero leaks, zero distortion."""
+        """Plays the sound effect."""
         self.volume = max(0.0, min(1.0, volume))
         if self.volume == 0:
             return
@@ -119,8 +123,7 @@ class Sharko(SharkoConstants, IconManager):
     thrown_icons = set()
 
     def __init__(self):
-        """Initialize Sharko character with paths to animation assets.
-        """
+        """Initialize Sharko character with paths to animation assets."""
         # APPLICATION & GUI SETUP
         if not QApplication.instance():
             self.app = QApplication(sys.argv)
@@ -279,6 +282,7 @@ class Sharko(SharkoConstants, IconManager):
 
     @staticmethod
     def get_inactive_length():
+        """Returns user inactivity duration since the last input in ms."""
         last_input_info = LASTINPUTINFO()
         last_input_info.cbSize = sizeof(last_input_info)
         windll.user32.GetLastInputInfo(byref(last_input_info))
@@ -322,6 +326,7 @@ class Sharko(SharkoConstants, IconManager):
         self.active_timers.clear()
 
     def _cancel_block_transition(self):
+        """Cancels any pending block transitions and resets parry/block flags."""
         if self.block_transition_callback:
             self.block_transition_callback.stop()
             self.block_transition_callback.deleteLater()
@@ -331,6 +336,8 @@ class Sharko(SharkoConstants, IconManager):
 
     @staticmethod
     def _calculate_new_posture(current_posture, posture_amount, max_posture):
+        """Calculates the new posture value from the current posture and the modification amount.
+        Also contains logic to determine if a posture overflow occurred."""
         if max_posture <= 0:
             return 0, False
 
@@ -339,7 +346,7 @@ class Sharko(SharkoConstants, IconManager):
         return new_posture, overflow
 
     def _apply_posture(self, posture_amount):
-        """Adjust posture and trigger the posture-break state if it fills up."""
+        """Adjust posture and trigger the posture-broken state if it fills up."""
         current_posture = self.posture
         new_posture, overflow = self._calculate_new_posture(current_posture, posture_amount, self.MAX_POSTURE)
 
@@ -352,7 +359,7 @@ class Sharko(SharkoConstants, IconManager):
         return new_posture
 
     def _create_gui(self):
-        """Create and configure the GUI elements (label, menus, window properties)."""
+        """Create and configure the gui elements (label, menus, window properties)."""
         layout = QVBoxLayout(self.window)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -456,8 +463,7 @@ class Sharko(SharkoConstants, IconManager):
         self.label.setPixmap(qpixmap)
 
     def move_window_x(self, target_x):
-        """Animate character window movement to target X position.
-        """
+        """Animate character window movement to target X position."""
         start_x = self.window.x()
 
         total_dx = target_x - start_x
@@ -484,6 +490,7 @@ class Sharko(SharkoConstants, IconManager):
         self._single_shot(self.FRAME_DELAY_MS, lambda: step_move(0, start_x))
 
     def play_cutscene(self, cutscene_preset):
+        """Initializes playing a cutscene preset if no other cutscene is active."""
         if self.cutscene_active:
             return
         self.cutscene_active = True
@@ -495,6 +502,7 @@ class Sharko(SharkoConstants, IconManager):
         self._play_cutscene_frame(cutscene, 0, cutscene_preset, 0)
 
     def _play_cutscene_frame(self, cutscene, current_frame, cutscene_preset, repeat_count):
+        """Renders a single cutscene frame, handling repeat/talk segments, and then schedules the next frame."""
         if cutscene_preset == "InactiveCutscene" and self.get_inactive_length() < self.INACTIVE_TIME_REQUIREMENT and current_frame < 6:
             current_frame = 6
             self.talking_disabled = True
@@ -545,12 +553,14 @@ class Sharko(SharkoConstants, IconManager):
         self._single_shot(duration, lambda: self._play_cutscene_frame(cutscene, current_frame, cutscene_preset, repeat_count))
 
     def clear_talking(self):
+        """Clears any active talking state images and resets flags."""
         if getattr(self, "question_active", False):
             self.question_active = False
             self._question_answers = None
         self.states["talking"] = []
 
     def _middle_button_pressed(self, event):
+        """Starts a drag operation when the middle mouse button is pressed."""
         if self.fight_mode_active or self.cutscene_active:
             return
         self.y = event.pos().y()
@@ -558,10 +568,12 @@ class Sharko(SharkoConstants, IconManager):
         self.currently_moving = True
 
     def _middle_button_released(self, event):
+        """Ends the drag operation when the middle mouse button is released."""
         self.y = event.pos().y()
         self.currently_moving = False
 
     def _middle_button_hold_move(self, event):
+        """Moves the main character window while the middle mouse button is held down and moved."""
         if self.fight_mode_active or self.cutscene_active:
             return
         cursor_pos = event.globalPos()
@@ -570,6 +582,7 @@ class Sharko(SharkoConstants, IconManager):
         self.window.setGeometry(x, y, self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
 
     def _handle_question_click(self, event):
+        """Processes clicks on question options when a question dialogue is active."""
         if not getattr(self, "question_active", False):
             return
         x_off = self.TEXT_OFFSET_LEFT if self.current_facing == "Left" else self.TEXT_OFFSET_RIGHT
@@ -586,6 +599,7 @@ class Sharko(SharkoConstants, IconManager):
             self._display_answer(answer_text)
 
     def _display_answer(self, answer_text):
+        """Creates a speaking animation with a response when the user answers a question."""
         self.question_active = False
         self._question_answers = None
         if hasattr(self, "idle_timer") and self.idle_timer:
@@ -597,34 +611,41 @@ class Sharko(SharkoConstants, IconManager):
         self._single_shot(self.TALKING_ANIMATION_DELAY, self.idle_state)
 
     def new_state(self, new_state):
+        """Sets the current state of the sharko."""
         self.current_state = new_state
 
     def movie_off(self):
+        """Turns off movie mode and returns to idle."""
         self.log_stats()
         if self.current_state in ("MovieG", "MovieNG"):
             self.new_state("Limbo")
             self.idle_state()
 
     def movie_on_g(self):
+        """Activates movie/ do not disturb mode with movie glasses."""
         if self.current_state in ("idle", "talking", "greeting"):
             self.new_state("MovieG")
 
     def movie_on_ng(self):
+        """Activates movie/ do not disturb mode without movie glasses."""
         if self.current_state in ("idle", "talking", "greeting"):
             self.new_state("MovieNG")
 
     def toggle_walking(self):
+        """Toggles whether Destroyman III can walk around the screen."""
         self.walking_enabled = not self.walking_enabled
         if not self.walking_enabled and self.current_state == "walking":
             self.currently_moving = True
             self._single_shot(50, self._stop_walk_cleanup)
 
     def _stop_walk_cleanup(self):
+        """Finishes walking animation and returns to idle."""
         self.currently_moving = False
         if self.current_state == "walking":
             self.new_state("idle")
 
     def flip_side(self, manual_activation=False):
+        """Flips Destroyman III's facing direction between left and right and repositions the window accordingly."""
         if manual_activation and self.current_state == "walking":
             return
         self.window.raise_()
@@ -645,6 +666,7 @@ class Sharko(SharkoConstants, IconManager):
         self.new_state("Limbo")
 
     def _on_f_pressed_safe(self):
+        """Handles an f key press in a safe, main thread friendly way."""
         current_time = time.time()
         if current_time < self.posture_break_cooldown_until:
             return
@@ -667,7 +689,7 @@ class Sharko(SharkoConstants, IconManager):
             self.block_transition_callback.start(int(self.PARRY_WINDOW * 1000))
 
     def _on_f_released_safe(self):
-        # Handle parry key release (f)
+        """Handles parry key release (f) in a safe, main thread friendly way."""
         self.f_key_held = False
         self._cancel_block_transition()
 
@@ -681,20 +703,26 @@ class Sharko(SharkoConstants, IconManager):
                 CombatSystem.mouse_attack(self, x, y)
 
     def _on_f_press(self, key):
+        """Keyboard listener callback for f key presses that will later trigger the safe f key functions."""
         if getattr(key, "char", None) == "f" and self.fight_mode_active:
             self.input_emitter.f_pressed.emit()
 
     def _on_f_release(self, key):
+        """Keyboard listener callback for f key releases that will later trigger the safe f key functions."""
         if getattr(key, "char", None) == "f" and self.fight_mode_active:
             self.input_emitter.f_released.emit()
 
     def _on_mouse_click(self, x, y, button, pressed):
+        """Mouse listener callback for button clicks.
+            - Can later trigger the safe action function.
+            - Can also supress clicks during fight mode to stop the user from changing the desktop icon settings and ruin attacks."""
         if button == mouse.Button.right and self.suppress_right_click and WindowsUtils.should_supress_click():
             mouse.Listener.suppress_event(self)
         if pressed:
             self.input_emitter.action_triggered.emit(x, y, button)
 
     def _start_input_listeners(self):
+        """Starts the keyboard and mouse listeners for fight mode."""
         if self.keyboard_listener is None:
             self.keyboard_listener = keyboard.Listener(on_press=self._on_f_press, on_release=self._on_f_release)
         if self.mouse_listener is None:
@@ -704,6 +732,7 @@ class Sharko(SharkoConstants, IconManager):
         self.mouse_listener.start()
 
     def _stop_input_listeners(self):
+        """Stops the keyboard and mouse listeners once fight mode ends."""
         for listener in (self.keyboard_listener, self.mouse_listener):
             if listener:
                 try:
@@ -714,13 +743,14 @@ class Sharko(SharkoConstants, IconManager):
         self.mouse_listener = None
 
     def talking_state(self):
+        """Starts a talking animation and state, can either be a normal dialouge or a question."""
         if self.current_state == "idle":
             line_text = random.choice(self.Lines + self.Questions)
 
             if isinstance(line_text, str):
-                self.add_talking_sentences(line_text.strip(), "talking", False)
+                self.add_talking_sentences(line_text, "talking", False)
             else:
-                self.add_new_question(line_text)
+                self.add_talking_sentences(line_text, "talking", True)
             self.new_state("talking")
 
             self.sounds_group["start"].play(volume=self.sound_volume)
@@ -742,6 +772,7 @@ class Sharko(SharkoConstants, IconManager):
         return is_talking_like or is_cutscene or is_walking or is_limbo or is_fight
 
     def idle_state(self):
+        """Idle state initialization, and descision making on what to do next."""
         self.log_stats()
         if not self._should_transition_to_idle():
             return
@@ -766,6 +797,7 @@ class Sharko(SharkoConstants, IconManager):
                 self._single_shot(self.IDLE_ANIMATION_DELAY, self.idle_state)
 
     def walking_state(self):
+        """triggers the walking animation and state from idle."""
         if self.current_state != "idle":
             return
         self.new_state("walking")
@@ -782,12 +814,10 @@ class Sharko(SharkoConstants, IconManager):
         if self.current_facing == "Right":
             self.move_window_x(-179)
         else:
-            self.move_window_x(self.screen_x - 179)
-
-    def add_new_question(self, Question_Lines):
-        self.add_talking_sentences(Question_Lines, "talking", True)
+            self.move_window_x(self.screen_x - 179)        
 
     def add_talking_sentences(self, sentence, state, is_question):
+        """Simply adds talking or question images for a given sentence for a named state."""
         if not self.Lines:
             return
         if is_question:
@@ -796,6 +826,7 @@ class Sharko(SharkoConstants, IconManager):
             self._add_talking_images(sentence, state)
 
     def _add_talking_images(self, sentence, state):
+        """Builds talking frames for a sentence using the talking base images."""
         text_img = ImgUtils._render_text_image(self, sentence, (self.QUESTION_BOX_WIDTH, self.QUESTION_BOX_HEIGHT))
 
         base1 = self.qpixmaps["talk1"]
@@ -811,6 +842,7 @@ class Sharko(SharkoConstants, IconManager):
         self.states[state] = [comp1_pixmap, comp2_pixmap]
 
     def _add_question_images(self, sentence, state):
+        """Builds question frames for a sentence using the talking base images."""
         question_text, option1_text, option2_text, answer1_text, answer2_text = sentence
 
         q_img    = ImgUtils._render_text_image(self, question_text, (self.QUESTION_BOX_WIDTH, self.QUESTION_TEXT_HEIGHT))
@@ -831,6 +863,7 @@ class Sharko(SharkoConstants, IconManager):
         self.question_active = True
 
     def close_command(self):
+        """Initiates removal sequence and schedules the death animation."""
         self._stop_all_timers()
         if self.cutscene_active:
             self.cutscene_active = False
@@ -843,6 +876,7 @@ class Sharko(SharkoConstants, IconManager):
             self._single_shot(self.REMOVAL_ANIMATION_DELAY, self.death_animation)
 
     def death_animation(self):
+        """The tile based death animation that quits the program once it finishes."""
         screen_x, screen_y = self.window.x(), self.window.y()
         window = self.window
         TILE_SIZE = 15
@@ -906,6 +940,7 @@ class Sharko(SharkoConstants, IconManager):
         self.deathwidget = DeathAnimationWidget(qimg)
 
     def toggle_fight_mode(self):
+        """Toggles fight mode on or off, and instantiates or deinitializes down combat related systems."""
         if self.current_state != "fight":
             self.fight_mode_active = True
             WindowsUtils.cache_desktop_handles()
@@ -918,7 +953,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.animation_timer.deleteLater()
                 self.animation_timer = None
 
-            self.bar_guis = ScalableHealthBar(bar_height_scale=0.05, target_obj=self)
+            self.bar_guis = ScalableCombatBars(bar_height_scale=0.05, target_obj=self)
             self.bar_guis.pb_percentage = 0
             self.posture = 0
             self.posture_break_cooldown_until = 0
@@ -978,6 +1013,7 @@ class Sharko(SharkoConstants, IconManager):
             self._toggle_menu_items(["Fight"], True)
 
     def fight_loop(self):
+        """Executes one iteration of the fight loop, hands over the actual work to the combat AI."""
         if self.fight_loop_timer:
             self.fight_loop_timer.stop()
             self.fight_loop_timer.deleteLater()
@@ -989,6 +1025,7 @@ class Sharko(SharkoConstants, IconManager):
         self.combat_ai.run_fight_loop_tick()
 
     def sounds_logics(self, volume):
+        """Updates volume based on the slider value."""
         self.sound_volume = volume / 100
 
 
