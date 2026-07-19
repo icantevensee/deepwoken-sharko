@@ -49,6 +49,9 @@ class SharkoConstants:
     WINDOW_SIZE_X               = 357
     WINDOW_SIZE_Y               = 342
 
+    ROAR_MOUTH_OFFSET_Y         = 277
+    ROAR_MOUTH_OFFSET_X_RIGHT   = 250
+
     FALLING_SHARKO_SIZE_X       = 696
     FALLING_SHARKO_SIZE_Y       = 772
 
@@ -75,23 +78,28 @@ class SharkoConstants:
     PARRY_COOLDOWN_ICON_PATH    = "assets/UI/boss_bar_skull.png"
     ICON_FRAME_PATH             = "assets/UI/parry_overlay.png"
 
+    # Themes
+    THEME_VAMP                  = "assets/sounds/boss-phase-music/Theme_Vamp.mp3"
+    THEME_LOOP                  = "assets/sounds/boss-phase-music/Theme_Loop.mp3"
+
     # Sounds
-    END_TALKING_SOUND           = "assets/sounds/end_talking.wav"
-    START_TALKING_SOUND         = "assets/sounds/start_talking.wav"
-    CLASH_SOUND                 = "assets/sounds/Clash.wav"
-    GREETING_SOUND              = "assets/sounds/greeting.wav"
-    ANSWER_SOUND                = "assets/sounds/answer_question.wav"
+    END_TALKING_SOUND           = "assets/sounds/end_talking.mp3"
+    START_TALKING_SOUND         = "assets/sounds/start_talking.mp3"
+    CLASH_SOUND                 = "assets/sounds/Clash.mp3"
+    GREETING_SOUND              = "assets/sounds/greeting.mp3"
+    ANSWER_SOUND                = "assets/sounds/answer_question.mp3"
 
     # Combat sfx
-    BLOCK_ATTEMPT_SOUND         = "assets/sounds/fight-sfx/Block_Attempt.wav"
-    PARRY_SOUND                 = "assets/sounds/fight-sfx/Parry.wav"
-    BLOCK_SOUND                 = "assets/sounds/fight-sfx/Block.wav"
-    HIT_SOUND                   = "assets/sounds/fight-sfx/Hit.wav"
+    BLOCK_ATTEMPT_SOUND         = "assets/sounds/fight-sfx/Block_Attempt.mp3"
+    PARRY_SOUND                 = "assets/sounds/fight-sfx/Parry.mp3"
+    BLOCK_SOUND                 = "assets/sounds/fight-sfx/Block.mp3"
+    HIT_SOUND                   = "assets/sounds/fight-sfx/Hit.mp3"
 
     # fight sfx
-    ROAR_SOUND_1                = "assets/sounds/fight-sfx/Roar1.wav"
-    ROAR_SOUND_2                = "assets/sounds/fight-sfx/Roar2.wav"
-    DREAD_BREATH_SOUND          = "assets/sounds/fight-sfx/Breath.wav"
+    LONG_ROAR_SOUND             = "assets/sounds/fight-sfx/Long_Roar1.mp3"
+    ROAR_SOUND_1                = "assets/sounds/fight-sfx/Roar1.mp3"
+    ROAR_SOUND_2                = "assets/sounds/fight-sfx/Roar2.mp3"
+    DREAD_BREATH_SOUND          = "assets/sounds/fight-sfx/Breath.mp3"
 
     # Fight constants
     MAX_BOSS_HEALTH             = 2000
@@ -100,6 +108,8 @@ class SharkoConstants:
     POSTURE_PARRY_COST          = 4
     POSTURE_BREAK_COOLDOWN      = 3
     M1_DAMAGE                   = 30
+
+    LAZER_WINDUP                = 750
 
     # Attack statistics
     ATTACK_STATS = {

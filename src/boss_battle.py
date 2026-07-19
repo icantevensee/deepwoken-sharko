@@ -44,9 +44,9 @@ class CombatSystem():
             if time_held >= self.PARRY_WINDOW:
                 self.last_parry_block_time = current_time
                 if hasattr(self, "_apply_posture"):
-                    self._apply_posture(posture_amount)
+                    self._apply_posture(posture_amount, damage_amount)
                 try:
-                    self.sounds_group["block"].play(volume=self.sound_volume)
+                    self.audio_manager.play("block", volume=self.sound_volume)
                 except Exception as e:
                     print(f"Error playing block sound: {e}")
                 if self.particles_manager:
@@ -56,7 +56,7 @@ class CombatSystem():
                 if hasattr(self, "_apply_posture"):
                     self._apply_posture(-self.POSTURE_PARRY_COST)
                 try:
-                    self.sounds_group["parry"].play(volume=self.sound_volume)
+                    self.audio_manager.play("parry", volume=self.sound_volume)
                 except Exception as e:
                     print(f"Error playing parry sound: {e}")
                 if self.particles_manager:
@@ -83,7 +83,7 @@ class CombatSystem():
         # Play blood effect and hit sound
         if self.particles_manager:
             self.particles_manager.play_blood(mouse_x, mouse_y)
-        self.sounds_group["hit"].play(volume=self.sound_volume)
+        self.audio_manager.play("hit", volume=self.sound_volume)
 
     def damage_sharko(self):
         """Reduces the boss’s health and updates the boss bar. Also plays sharko-blood particles and hit sound when the mouse attack hits Sharko."""
@@ -93,7 +93,7 @@ class CombatSystem():
         self.bar_guis.bb_percentage = self.bar_guis.boss_health / self.MAX_BOSS_HEALTH
         mouse_x, mouse_y = win32api.GetCursorPos()
         self.particles_manager.play_sharko_blood(mouse_x, mouse_y)
-        self.sounds_group["hit"].play(volume=self.sound_volume)
+        self.audio_manager.play("hit", volume=self.sound_volume)
 
     def mouse_attack(self, x, y):
         """Checks whether a click is within Destroyman III's hitbox which changes based on the way it's facing and, if so, calls damage_sharko."""
@@ -349,7 +349,7 @@ class CombatSystem():
                     on_complete()
         step_move()
 
-    def lazer(self, duration_ms, on_complete=None):
+    def lazer(self, on_complete=None):
         """Qpainter based rendering lazer attack:
            - Pivots the head of a sprite to always face mouse, also moving body if head range of movement is exceeded.
            - Creates and positions a lazer beam object via vfx manager.
@@ -384,9 +384,8 @@ class CombatSystem():
         self._lazer_frame1db = False
         self._lazer_lastangle = 0
         self._lazer_damagetimer = 0
-        self._lazer_indicator_length = 500
         self._lazer_dir = "Right"
-        self._lazer_duration = duration_ms
+        self._lazer_duration = self.audio_manager.get_sound_length("dread_breath")
         self._lazer_on_complete = on_complete
         self._lazer_offset_x = offset_x
         self._lazer_offset_y = offset_y
@@ -408,12 +407,12 @@ class CombatSystem():
                 angle_deg = dirconst * math.degrees(angle_rad)
 
                 norm_angle = ((angle_deg + 180) % 360 - 180) * dirconst
-                if elapsed < self._lazer_indicator_length:
+                if elapsed < self.LAZER_WINDUP:
                     norm_angle = self._lazer_lastangle + 0.2 * (norm_angle - self._lazer_lastangle)
                     self._lazer_lastangle = norm_angle
 
                 face_angle = max(min(norm_angle, 16), -60)
-                overflow_angle = (norm_angle - face_angle) * dirconst
+                overflow_angle = (face_angle - norm_angle) * dirconst
 
                 rad_val = math.radians(norm_angle * dirconst)
                 local_offset_x = 80 * dirconst
@@ -428,9 +427,11 @@ class CombatSystem():
 
                 if not self._lazer_frame1db:
                     self.particles_manager.play_star_pop(pivot_x, pivot_y, count=1)
+                    self.particles_manager.play_ardour(pivot_x, pivot_y)
+                    self.audio_manager.play("dread_breath", volume=self.sound_volume)
                     self._lazer_frame1db = True
 
-                if elapsed > self._lazer_indicator_length:
+                if elapsed > self.LAZER_WINDUP:
                     self.particles_manager.set_laser("Sharko_Lazer", pivot_x, pivot_y, angle, offset=0)
                     self._lazer_damagetimer += 1
                     if self._lazer_damagetimer >= 3:
@@ -597,6 +598,57 @@ class CombatSystem():
         self.toast_manager.trigger_toast_async(random.choice(self.TOAST_TEXT["titles"]), random.choice(self.TOAST_TEXT["descriptions"]))
         if on_complete:
             self._single_shot(2000, on_complete)
+
+    def roar_attack(self, on_complete=None):
+        """Plays a roaring animation with screenshake."""
+        self._roar1_frame = QPixmap(os.path.join(self.IMAGES_PATH, "roar1.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "roar1.png")).transformed(self.horizontal_flip)
+        self._roar2_frame = QPixmap(os.path.join(self.IMAGES_PATH, "roar2.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "roar2.png")).transformed(self.horizontal_flip)
+        self._roar3_frame = QPixmap(os.path.join(self.IMAGES_PATH, "roar3.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "roar3.png")).transformed(self.horizontal_flip)
+        self._roar4_frame = QPixmap(os.path.join(self.IMAGES_PATH, "roar4.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "roar4.png")).transformed(self.horizontal_flip)
+
+        roar_duration = self.audio_manager.get_sound_length("long_roar")
+        total_frames = roar_duration // (self.ANIMATION_DELAY // 2) + 4
+        mouth_offset_x = self.ROAR_MOUTH_OFFSET_X_RIGHT if self.current_facing  == "Right" else self.WINDOW_SIZE_X - self.ROAR_MOUTH_OFFSET_X_RIGHT
+        current_frame = 0
+        roar_points = [math.floor(total_frames * 0.2), math.floor(total_frames * 0.4), math.floor(total_frames * 0.6), math.floor(total_frames * 0.8)]
+
+        def update_roar():
+            nonlocal current_frame
+            current_frame += 1
+
+            if current_frame in [1, total_frames - 1]:
+                self.label.setPixmap(self._roar1_frame)
+            elif current_frame in [2, total_frames - 2]:
+                self.label.setPixmap(self._roar2_frame)
+
+                if current_frame == total_frames - 2:
+                    if hasattr(self, "temp_combat_timer") and self.temp_combat_timer:
+                        self.temp_combat_timer.stop()
+                        self.temp_combat_timer.deleteLater()
+                        self.temp_combat_timer = None
+
+                    del self._roar1_frame
+                    del self._roar2_frame
+                    del self._roar3_frame
+                    del self._roar4_frame
+
+                    if on_complete:
+                        self._single_shot(self.ANIMATION_DELAY // 2, on_complete)
+                else:
+                    self.audio_manager.play("long_roar", volume=self.sound_volume)
+                    self.particles_manager.play_ardour(self.window.geometry().x() + mouth_offset_x, self.window.geometry().y() + self.ROAR_MOUTH_OFFSET_Y)
+                    self.screen_shaker.shake(duration_ms=roar_duration + self.ANIMATION_DELAY, intensity=50, sustained=True)
+            elif current_frame % 2 == 0:
+                self.label.setPixmap(self._roar3_frame)
+            else:
+                self.label.setPixmap(self._roar4_frame)
+
+            if current_frame - 2 in roar_points:
+                self.particles_manager.play_ardour(self.window.geometry().x() + mouth_offset_x, self.window.geometry().y() + self.ROAR_MOUTH_OFFSET_Y)
+
+        self.temp_combat_timer = QTimer()
+        self.temp_combat_timer.timeout.connect(update_roar)
+        self.temp_combat_timer.start(self.ANIMATION_DELAY // 2)
 
     def summon_sword(self):
         """Creates a sword window if not already present."""

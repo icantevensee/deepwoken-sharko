@@ -85,6 +85,7 @@ class Particle:
         "unparryable_outline": lambda self, dt: Particle.update_outline(self, dt),
         "unblockable_outline": lambda self, dt: Particle.update_outline(self, dt),
         "falling_sharko": lambda self, dt: Particle.update_falling_sharko(self, dt),
+        "ardour": lambda self, dt: Particle.update_ardour(self, dt),
     }
 
     def __init__(self, x, y, p_type, pixmap=None):
@@ -163,6 +164,9 @@ class Particle:
         elif p_type == "falling_sharko":
             self.db         = False
             self.friction   = 1
+        elif p_type == "ardour":
+            self.scale      = 0.0
+            self.friction   = 1.0
 
     def update_sparkle(self, dt):
         if self.elapsed < 0.06:
@@ -175,6 +179,10 @@ class Particle:
         self.rotation += self.rot_speed
         self.scale += 0.005
         self.alpha -= 0.08
+
+    def update_ardour(self, dt):
+        self.scale += 0.05
+        self.alpha -= 0.008
 
     def update_blood(self, dt):
         self.rotation += self.rot_speed
@@ -292,6 +300,7 @@ class VFXManager(QWidget):
             "unblockable_glyph": "../../assets/particles/unblockable_glyph.png",
             "unblockable_outline": "../../assets/particles/unblockable_outline.png",
             "falling_sharko": "../../assets/sharko/falling.png",
+            "ardour": "../../assets/particles/ardour.png"
         }
         for key, rel_path in asset_map.items():
             full_path = os.path.join(self.script_dir, rel_path)
@@ -304,6 +313,8 @@ class VFXManager(QWidget):
                 p.setCompositionMode(QPainter.CompositionMode_SourceAtop)
                 if key.startswith("ring") or key.startswith("spark"):
                     p.fillRect(tinted.rect(), QColor(255, 220, 0))
+                if key.startswith("ardour"):
+                    p.fillRect(tinted.rect(), QColor(218, 74, 222))
                 p.end()
                 self.textures[key] = tinted
 
@@ -366,6 +377,9 @@ class VFXManager(QWidget):
         particle.hitbox_width = sharko_width * scale
         particle.hitbox_height = sharko_height * scale
         self.particles.append(particle)
+
+    def play_ardour(self, x, y):
+        self.particles.append(Particle(x, y, "ardour", self.textures["ardour"]))
 
     def update_vfx(self):
         """One tick for all particles and lasers, perform collision detection for falling Sharko, then call repaint."""

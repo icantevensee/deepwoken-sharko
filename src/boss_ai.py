@@ -22,14 +22,18 @@ class SharkoCombatAI:
         self.sharko = sharko
         self.tier_1_attacks = [self._jump_and_attack, self._do_area_belly_flop]
         self.tier_2_attacks = [self._toast_attack, self._do_laser]
-        self.tier_3_attacks = []
+        self.tier_3_attacks = [self._roar_attack]
         self.all_attacks = (self.tier_1_attacks + self.tier_2_attacks + self.tier_3_attacks)
+        self._first_attack_db = False
 
     def run_fight_loop_tick(self):
         """Executes one iteration of the descision making loop."""
 
-        random_attack = random.choice(self.all_attacks)
-
+        if not self._first_attack_db:
+            random_attack = self._roar_attack
+            self._first_attack_db = True
+        else:
+            random_attack = random.choice(self.all_attacks)
         random_attack()
 
         self.sharko.log_stats()
@@ -71,9 +75,7 @@ class SharkoCombatAI:
                 sharko.fight_loop_timer = None
             sharko.fight_loop_timer = sharko._add_timer(QTimer())
             sharko.fight_loop_timer.setSingleShot(True)
-            sharko.fight_loop_timer.timeout.connect(
-                lambda: play_idle_frame(current_frame)
-            )
+            sharko.fight_loop_timer.timeout.connect(lambda: play_idle_frame(current_frame))
             sharko.fight_loop_timer.start(sharko.ANIMATION_DELAY)
 
         play_idle_frame(current_idle_frame)
@@ -97,8 +99,7 @@ class SharkoCombatAI:
         )
 
     def _do_laser(self):
-        duration_ms = 1600
-        CombatSystem.lazer(self.sharko, duration_ms, on_complete=self._inter_attack_idle)
+        CombatSystem.lazer(self.sharko, on_complete=self._inter_attack_idle)
 
     def _toast_attack(self):
         if WindowsUtils.are_notifications_enabled():
@@ -107,6 +108,9 @@ class SharkoCombatAI:
             available_attacks = [attack for attack in self.all_attacks if attack != self._toast_attack]
             random_attack = random.choice(available_attacks)
             random_attack()
+
+    def _roar_attack(self):
+        CombatSystem.roar_attack(self.sharko, on_complete=self._inter_attack_idle)
 
     def _do_sword_poke(self):
         CombatSystem.sword_combo(self.sharko, num_attacks=1)

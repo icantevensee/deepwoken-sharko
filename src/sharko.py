@@ -19,15 +19,12 @@ import      time
 import      os
 import      sys
 
-import      threading
-
 from pynput                             import keyboard, mouse
 import keyboard as                             blocker_keyboard
 
-from PyQt5.QtMultimedia                 import QMediaPlayer, QMediaContent
 from PyQt5.QtWidgets                    import QApplication, QWidget, QVBoxLayout, QMenu, QWidgetAction
 from PyQt5.QtGui                        import QPixmap, QPainter, QTransform, QFontDatabase
-from PyQt5.QtCore                       import Qt, QTimer, QObject, pyqtSignal, QUrl
+from PyQt5.QtCore                       import Qt, QTimer, QObject, pyqtSignal
 
 from widgets.bar_guis                   import ScalableCombatBars
 from vfx.vfx_manager                    import VFXManager
@@ -42,6 +39,8 @@ from constants                          import SharkoConstants
 from windows_interactive.icons          import IconManager
 from windows_interactive.toasts         import ToastManager
 from windows_interactive.windows_utils  import WindowsUtils
+
+from audio_manager                      import AudioManager
 
 from widgets.base_components            import SharkoLabel, MenuStyle, VolumeSlider
 
@@ -74,48 +73,6 @@ class InputSignalEmitter(QObject):
     f_pressed = pyqtSignal()
     f_released = pyqtSignal()
     action_triggered = pyqtSignal(int, int, object)
-
-
-class PitchedSound(QObject):
-    def __init__(self, wav_path, pitched=False, volume=1.0):
-        super().__init__()
-        self.pitched = pitched
-        self.volume = max(0.0, min(1.0, volume))
-        self.media_url = QUrl.fromLocalFile(wav_path)
-        self.active_players = set()
-
-    def play(self, volume=1.0):
-        """Plays the sound effect."""
-        self.volume = max(0.0, min(1.0, volume))
-        if self.volume == 0:
-            return
-        player = QMediaPlayer(None, QMediaPlayer.LowLatency)
-        player.setMedia(QMediaContent(self.media_url))
-        player.setVolume(int(self.volume * 100))
-
-        if self.pitched:
-            player.setPlaybackRate(random.uniform(0.95, 1.05))
-        else:
-            player.setPlaybackRate(1.0)
-
-        player.stateChanged.connect(self._handle_state_change)
-
-        self.active_players.add(player)
-        player.play()
-
-    def stop(self):
-        """Instantly terminates all overlapping streams and clears RAM."""
-        for player in list(self.active_players):
-            player.stop()
-            player.deleteLater()
-        self.active_players.clear()
-
-    def _handle_state_change(self, state):
-        """Safe extraction tracking that deletes C++ objects natively."""
-        player = self.sender()
-        if state == QMediaPlayer.StoppedState and player in self.active_players:
-            self.active_players.remove(player)
-            player.deleteLater()
 
 
 class Sharko(SharkoConstants, IconManager):
@@ -179,28 +136,35 @@ class Sharko(SharkoConstants, IconManager):
         self.currently_moving       = False
 
         # AUDIO SYSTEM
+        self.audio_manager = AudioManager()
         self.sound_volume = 1
-        self.sound_lock = threading.Lock()  # Thread-safe sound playback
-        self.sound_paths = {
-            "end": [self.END_TALKING_SOUND, False],
-            "start": [self.START_TALKING_SOUND, False],
-            "greeting": [self.GREETING_SOUND, False],
-            "clash_royale": [self.CLASH_SOUND, False],
-            "answer": [self.ANSWER_SOUND, False],
-            "block_attempt": [self.BLOCK_ATTEMPT_SOUND, True],
-            "parry": [self.PARRY_SOUND, True],
-            "block": [self.BLOCK_SOUND, True],
-            "hit": [self.HIT_SOUND, True],
-            "roar_1": [self.ROAR_SOUND_1, False],
-            "roar_2": [self.ROAR_SOUND_2, False],
-            "dread_breath": [self.DREAD_BREATH_SOUND, False],
+        self.default_sound_paths = {
+            "end": [self.END_TALKING_SOUND, False, False],
+            "start": [self.START_TALKING_SOUND, False, False],
+            "greeting": [self.GREETING_SOUND, False, False],
+            "clash_royale": [self.CLASH_SOUND, False, False],
+            "answer": [self.ANSWER_SOUND, False, False],
         }
 
-        # Build dictionary mapping names directly to the custom memory sound object
-        self.sounds_group = {
-            name: PitchedSound(obj[0], pitched=obj[1])
-            for name, obj in self.sound_paths.items()
+        self.fight_sound_paths = {
+            "block_attempt": [self.BLOCK_ATTEMPT_SOUND, True, False],
+            "parry": [self.PARRY_SOUND, True, False],
+            "block": [self.BLOCK_SOUND, True, False],
+            "hit": [self.HIT_SOUND, True, False],
+            "long_roar": [self.LONG_ROAR_SOUND, False, False],
+            "dread_breath": [self.DREAD_BREATH_SOUND, False, False],
+            "roar_1": [self.ROAR_SOUND_1, False, False],
+            "roar_2": [self.ROAR_SOUND_2, False, False],
+            "theme_vamp": [self.THEME_VAMP, False, False],
+            "theme_loop": [self.THEME_LOOP, False, True],
         }
+
+        for name, obj in self.fight_sound_paths.items():
+            self.audio_manager.register_sound(name, obj[0], pitched=obj[1], looped=obj[2])
+
+        for name, obj in self.default_sound_paths.items():
+            self.audio_manager.register_sound(name, obj[0], pitched=obj[1], looped=obj[2])
+            self.audio_manager.load_sound(name)
 
         # MOVEMENT SYSTEM
         self.walking_enabled = True
@@ -245,7 +209,7 @@ class Sharko(SharkoConstants, IconManager):
         self.block_transition_callback = None
 
         # STARTUP SEQUENCE
-        self.sounds_group["greeting"].play(volume=self.sound_volume)
+        self.audio_manager.play("greeting", volume=self.sound_volume)
         self.add_talking_sentences(self.intro_line.strip(), "greeting", False)
 
         self.window.show()
@@ -345,7 +309,7 @@ class Sharko(SharkoConstants, IconManager):
         overflow = new_posture >= max_posture and posture_amount > 0
         return new_posture, overflow
 
-    def _apply_posture(self, posture_amount):
+    def _apply_posture(self, posture_amount, would_be_damage=0):
         """Adjust posture and trigger the posture-broken state if it fills up."""
         current_posture = self.posture
         new_posture, overflow = self._calculate_new_posture(current_posture, posture_amount, self.MAX_POSTURE)
@@ -399,7 +363,15 @@ class Sharko(SharkoConstants, IconManager):
                 {"type": "talk", "image1": lambda: self.qpixmaps["talk_fwd_1"], "image2": lambda: self.qpixmaps["talk_fwd_2"], "sound": "start", "interval": 500, "repeat_count": 11, "text": "hello?"},
                 {"type": "talk", "image1": lambda: self.qpixmaps["talk_fwd_1"], "image2": lambda: self.qpixmaps["talk_fwd_2"], "sound": "clash_royale", "interval": 500, "repeat_count": 10, "text": "HELLO!"},
                 {"image": lambda: self.qpixmaps["staringframe"], "duration": 1000, "sound": "None"},
-                {"image": lambda: self.qpixmaps["sideframe"], "duration": 150, "sound": "None"},
+                {"image": lambda: self.qpixmaps["sideframe"], "duration": 150, "sound": "None", "on_complete": "None"},
+            ],
+            "BeginFightCutscene": [
+                {"image": lambda: self.qpixmaps["idle1"], "duration": 1000, "sound": "theme_vamp"},
+                {"image": lambda: self.qpixmaps["staringframe"], "duration": 1000, "sound": "None"},
+                {"type": "talk", "image1": lambda: self.qpixmaps["talk_fwd_1"], "image2": lambda: self.qpixmaps["talk_fwd_2"], "sound": "None", "interval": 500, "repeat_count": 20, "text": "Fight cutscene test text 1"},
+                {"type": "talk", "image1": lambda: self.qpixmaps["talk_fwd_1"], "image2": lambda: self.qpixmaps["talk_fwd_2"], "sound": "None", "interval": 500, "repeat_count": 15, "text": "Fight cutscene test text 2"},
+                {"image": lambda: self.qpixmaps["staringframe"], "duration": 1000, "sound": "None"},
+                {"image": lambda: self.qpixmaps["sideframe"], "duration": 150, "sound": "None", "on_complete": "None"},
             ],
         }
 
@@ -499,17 +471,26 @@ class Sharko(SharkoConstants, IconManager):
         cutscene = self.cutscene_presets[cutscene_preset]
         for frame in cutscene:
             frame["is_first_frame"] = True
+        if hasattr(self, "skip_cutscene_action") and self.skip_cutscene_action:
+            self.menu.removeAction(self.skip_cutscene_action)
+        self.cutscene_skipped = False
+        self.skip_cutscene_action = self.menu.addAction("Skip cutscene", lambda: setattr(self, "cutscene_skipped", True))
         self._play_cutscene_frame(cutscene, 0, cutscene_preset, 0)
 
     def _play_cutscene_frame(self, cutscene, current_frame, cutscene_preset, repeat_count):
         """Renders a single cutscene frame, handling repeat/talk segments, and then schedules the next frame."""
-        if cutscene_preset == "InactiveCutscene" and self.get_inactive_length() < self.INACTIVE_TIME_REQUIREMENT and current_frame < 6:
+        if cutscene_preset == "InactiveCutscene" and self.get_inactive_length() < self.INACTIVE_TIME_REQUIREMENT and current_frame < 6 or self.cutscene_skipped == True:
             current_frame = 6
             self.talking_disabled = True
         if current_frame == len(cutscene):
+            if hasattr(self, "skip_cutscene_action") and self.skip_cutscene_action:
+                self.menu.removeAction(self.skip_cutscene_action)
             self.cutscene_active = False
             self._toggle_menu_items(["Close"], True)
-            self.idle_state()
+            if cutscene[current_frame - 1]["on_complete"] == "None":
+                self.idle_state()
+            else:
+                cutscene[current_frame - 1]["on_complete"]()
             return
 
         current_frame_data = cutscene[current_frame]
@@ -548,7 +529,7 @@ class Sharko(SharkoConstants, IconManager):
                 image = image.transformed(self.horizontal_flip)
 
         if sound != "None" and sound_cleared:
-            self.sounds_group[sound].play(volume=self.sound_volume)
+            self.audio_manager.play(sound, volume=self.sound_volume)
         self.label.setPixmap(image)
         self._single_shot(duration, lambda: self._play_cutscene_frame(cutscene, current_frame, cutscene_preset, repeat_count))
 
@@ -595,7 +576,7 @@ class Sharko(SharkoConstants, IconManager):
             answer_text = self._question_answers[1] if self._question_answers else None
 
         if answer_text:
-            self.sounds_group["answer"].play(volume=self.sound_volume)
+            self.audio_manager.play("answer", volume=self.sound_volume)
             self._display_answer(answer_text)
 
     def _display_answer(self, answer_text):
@@ -681,7 +662,7 @@ class Sharko(SharkoConstants, IconManager):
             def transition_to_block():
                 if self.f_key_held and (time.time() - self.parry_press_time) >= self.PARRY_WINDOW:
                     self.parry_block_active_until = time.time() + self.PARRY_WINDOW
-                    self.sounds_group["block_attempt"].play(volume=self.sound_volume)
+                    self.audio_manager.play("block_attempt", volume=self.sound_volume)
 
             self.block_transition_callback = self._add_timer(QTimer())
             self.block_transition_callback.setSingleShot(True)
@@ -753,7 +734,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.add_talking_sentences(line_text, "talking", True)
             self.new_state("talking")
 
-            self.sounds_group["start"].play(volume=self.sound_volume)
+            self.audio_manager.play("start", volume=self.sound_volume)
         if hasattr(self, "idle_timer") and self.idle_timer:
             self.idle_timer.stop()
             self.idle_timer.deleteLater()
@@ -777,7 +758,7 @@ class Sharko(SharkoConstants, IconManager):
         if not self._should_transition_to_idle():
             return
         if self.current_state not in ("walking", "cutscene", "Limbo"):
-            self.sounds_group["end"].play(volume=self.sound_volume)
+            self.audio_manager.play("end", volume=self.sound_volume)
         self.new_state("idle")
         self.clear_talking()
         inactive_length = self.get_inactive_length()
@@ -942,35 +923,45 @@ class Sharko(SharkoConstants, IconManager):
     def toggle_fight_mode(self):
         """Toggles fight mode on or off, and instantiates or deinitializes down combat related systems."""
         if self.current_state != "fight":
-            self.fight_mode_active = True
-            WindowsUtils.cache_desktop_handles()
-            blocker_keyboard.add_hotkey('shift+f10', lambda: None, suppress=True)  # desktop context menu open shortcut
-            self.suppress_right_click = True
-            self._stop_all_timers()
+            def _start_fight_mode():
+                for name in self.fight_sound_paths:
+                    self.audio_manager.load_sound(name)
 
-            if self.animation_timer:
-                self.animation_timer.stop()
-                self.animation_timer.deleteLater()
-                self.animation_timer = None
+                self.fight_mode_active = True
+                WindowsUtils.cache_desktop_handles()
+                blocker_keyboard.add_hotkey('shift+f10', lambda: None, suppress=True)  # desktop context menu open shortcut
+                self.suppress_right_click = True
+                self._stop_all_timers()
+                if not self.audio_manager.is_track_playing("theme_loop"):
+                    self.audio_manager.play("theme_loop")
+                    self.audio_manager.unload_sound("theme_vamp")
 
-            self.bar_guis = ScalableCombatBars(bar_height_scale=0.05, target_obj=self)
-            self.bar_guis.pb_percentage = 0
-            self.posture = 0
-            self.posture_break_cooldown_until = 0
-            self.bar_guis.slide_in()
-            self.warning_manager = MultiWarningOverlay()
-            self.screen_shaker = ScreenShaker()
-            self.toast_manager = ToastManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type))
-            self.particles_manager = VFXManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type), screen_shaker=self.screen_shaker)
-            self.screen_shaker.particles_manager = self.particles_manager
-            self.combat_ai = SharkoCombatAI(self)
-            WindowsUtils.disable_desktop_grid_and_autoarrange_universal()
+                if self.animation_timer:
+                    self.animation_timer.stop()
+                    self.animation_timer.deleteLater()
+                    self.animation_timer = None
 
-            self._start_input_listeners()
+                self.bar_guis = ScalableCombatBars(bar_height_scale=0.05, target_obj=self)
+                self.bar_guis.pb_percentage = 0
+                self.posture = 0
+                self.posture_break_cooldown_until = 0
+                self.bar_guis.slide_in()
+                self.warning_manager = MultiWarningOverlay()
+                self.screen_shaker = ScreenShaker()
+                self.toast_manager = ToastManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type))
+                self.particles_manager = VFXManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type), screen_shaker=self.screen_shaker)
+                self.screen_shaker.particles_manager = self.particles_manager
+                self.combat_ai = SharkoCombatAI(self)
+                WindowsUtils.disable_desktop_grid_and_autoarrange_universal()
 
-            self.new_state("fight")
-            self.fight_loop()
-            self._toggle_menu_items(["Fight"], False)
+                self._start_input_listeners()
+
+                self.new_state("fight")
+                self.fight_loop()
+                self._toggle_menu_items(["Fight"], False)
+            self.cutscene_presets["BeginFightCutscene"][-1]["on_complete"] = _start_fight_mode
+            self._single_shot(self.audio_manager.get_sound_length("theme_vamp") - 100, lambda: self.audio_manager.play("theme_loop"))
+            self.play_cutscene("BeginFightCutscene")
         else:
             self.fight_mode_active = False
             self.suppress_right_click = False
@@ -980,6 +971,9 @@ class Sharko(SharkoConstants, IconManager):
             self.animation_timer.timeout.connect(self.animate)
             self.animation_timer.start(self.ANIMATION_DELAY)
             self._stop_all_timers()
+
+            for name in self.fight_sound_paths:
+                self.audio_manager.unload_sound(name)
 
             if hasattr(self, "combat_ai") and self.combat_ai:
                 del self.combat_ai
@@ -1000,6 +994,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.toast_manager = None
             if self.bar_guis:
                 self.bar_guis.slide_out_to_hide()
+                self.bar_guis = None
             if hasattr(self, "particles_manager") and self.particles_manager:
                 self.particles_manager.deinitialize()
                 self.particles_manager = None

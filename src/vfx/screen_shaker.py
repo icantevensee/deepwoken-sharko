@@ -48,6 +48,7 @@ class ScreenShaker(QWidget):
         self.intensity = 0
         self.start_time = 0
         self.duration = 0
+        self.sustained = False
 
         self.loop_timer = QTimer(self)
         self.loop_timer.timeout.connect(self.process_shake_step)
@@ -55,9 +56,10 @@ class ScreenShaker(QWidget):
         self.offset_x = 0
         self.offset_y = 0
 
-    def shake(self, duration_ms=450, intensity=30):
+    def shake(self, duration_ms=450, intensity=30, sustained=False):
         """Start a shake effect with a given duration and intensity."""
         self.intensity = intensity
+        self.sustained = sustained
         self.duration = duration_ms / 1000.0
 
         self.start_time = time.time()
@@ -91,11 +93,20 @@ class ScreenShaker(QWidget):
             )
 
         progress = elapsed / self.duration
+        if self.sustained:
+            if progress < 0.8:
+                decay = 1.0
+            else:
+                tail = (progress - 0.8) / 0.2
+                decay = math.exp(-4.5 * tail)
+            current_intensity = self.intensity * decay
+            frequency_multiplier = 1.0
+        else:
+            decay = math.exp(-4.5 * progress)
+            current_intensity = self.intensity * decay
+            frequency_multiplier = 1.0 + (progress * 1.5)
 
-        decay = math.exp(-4.5 * progress)
-        current_intensity = self.intensity * decay
         t_ms = elapsed * 1000.0
-        frequency_multiplier = 1.0 + (progress * 1.5)
 
         speed_x = 0.01 * frequency_multiplier
         speed_y = 0.02 * frequency_multiplier
@@ -119,6 +130,7 @@ class ScreenShaker(QWidget):
         self.current_frame = None
         self.offset_x = 0
         self.offset_y = 0
+        self.update()
         self.hide()
 
     def paintEvent(self, event):
