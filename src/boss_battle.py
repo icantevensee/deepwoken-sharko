@@ -11,6 +11,7 @@ import      random
 import      os
 
 import      win32api
+import      win32con
 import      win32gui
 
 from ctypes                             import windll
@@ -202,16 +203,23 @@ class CombatSystem():
 
             current_step += 1
             if current_step < Steps:
-                QTimer.singleShot(int(dt * 1000), step_move)
+                self._single_shot(int(dt * 1000), step_move)
             else:
                 self.window.move(int(end_x + offset), int(end_y))
-                self.jump_images.clear()
-                self.alt_jump_images.clear()
-                del self.jump_images
-                del self.alt_jump_images
+                cleanup_jump_images()
                 self.current_facing = "Right" if offset == 0 else "Left"
                 if on_complete:
                     on_complete()
+
+        def cleanup_jump_images():
+            self.jump_images.clear()
+            self.alt_jump_images.clear()
+            del self.jump_images
+            del self.alt_jump_images
+            self.jump_images = None
+            self.alt_jump_images = None
+
+        self.fight_img_cleanup_func = cleanup_jump_images
         step_move()
 
     def jump_and_hit(self, jump_peak, shortcut, speed, on_complete=None):
@@ -228,7 +236,10 @@ class CombatSystem():
             "jump3": QPixmap(os.path.join(self.IMAGES_PATH, "jump3.png")).transformed(self.horizontal_flip),
             "jump4": QPixmap(os.path.join(self.IMAGES_PATH, "jump4.png")).transformed(self.horizontal_flip)
         }
-        peak_x, peak_y, start_x, start_y = jump_peak[0], jump_peak[1] - 210, self.window.geometry().x(), self.window.geometry().y()
+        desktop_left = win32api.GetSystemMetrics(win32con.SM_XVIRTUALSCREEN)
+        desktop_top = win32api.GetSystemMetrics(win32con.SM_YVIRTUALSCREEN)
+
+        peak_x, peak_y, start_x, start_y = jump_peak[0] + desktop_left, jump_peak[1] + desktop_top - 210, self.window.geometry().x(), self.window.geometry().y()
         folder_view, hwnd_lv = WindowsUtils.get_desktop_interfaces(
             self.CLSID_ShellWindows,
             self.IID_IFolderView,
@@ -335,18 +346,25 @@ class CombatSystem():
 
             current_step += 1
             if current_step < Steps:
-                QTimer.singleShot(int(dt * 1000), step_move)
+                self._single_shot(int(dt * 1000), step_move)
             else:
                 if hasattr(self, "screen_shaker") and self.screen_shaker:
                     self.screen_shaker.shake(duration_ms=2500, intensity=35)
                 self.window.move(int(end_x + offset), int(end_y))
-                self.jump_images.clear()
-                self.alt_jump_images.clear()
-                del self.jump_images
-                del self.alt_jump_images
+                cleanup_jump_images()
                 self.current_facing = "Right" if offset == 0 else "Left"
                 if on_complete:
                     on_complete()
+
+        def cleanup_jump_images():
+            self.jump_images.clear()
+            self.alt_jump_images.clear()
+            del self.jump_images
+            del self.alt_jump_images
+            self.jump_images = None
+            self.alt_jump_images = None
+
+        self.fight_img_cleanup_func = cleanup_jump_images
         step_move()
 
     def lazer(self, on_complete=None):
@@ -511,13 +529,18 @@ class CombatSystem():
             self.window.repaint()
             QCoreApplication.processEvents()
 
+            if self._lazer_on_complete:
+                self._lazer_on_complete()
+
+        def cleanup_lazer_images():
             del self._lazer_body
             del self._lazer_face
             del self._lazer_corals
+            self._lazer_body = None
+            self._lazer_face = None
+            self._lazer_corals = None
 
-            if self._lazer_on_complete: 
-                self._lazer_on_complete()
-
+        self.fight_img_cleanup_func = cleanup_lazer_images
         self.temp_combat_timer = QTimer()
         self.temp_combat_timer.timeout.connect(update_lazer)
         self.temp_combat_timer.start(30)
@@ -539,7 +562,7 @@ class CombatSystem():
             subdivision_pool = list(range(1, num_subdivisions + 1))
             lethal_subdivisions = random.sample(subdivision_pool, num_subdivisions_to_attack)
 
-            lethal_subdivisions.sort()    
+            lethal_subdivisions.sort()
             if lethal_subdivisions:
                 current_group = [lethal_subdivisions[0]]
                 for sub in lethal_subdivisions[1:]:
@@ -623,14 +646,11 @@ class CombatSystem():
 
                 if current_frame == total_frames - 2:
                     if hasattr(self, "temp_combat_timer") and self.temp_combat_timer:
+                        cleanup_roar_images()
+
                         self.temp_combat_timer.stop()
                         self.temp_combat_timer.deleteLater()
                         self.temp_combat_timer = None
-
-                    del self._roar1_frame
-                    del self._roar2_frame
-                    del self._roar3_frame
-                    del self._roar4_frame
 
                     if on_complete:
                         self._single_shot(self.ANIMATION_DELAY // 2, on_complete)
@@ -645,6 +665,18 @@ class CombatSystem():
 
             if current_frame - 2 in roar_points:
                 self.particles_manager.play_ardour(self.window.geometry().x() + mouth_offset_x, self.window.geometry().y() + self.ROAR_MOUTH_OFFSET_Y)
+
+        def cleanup_roar_images():
+            del self._roar1_frame
+            del self._roar2_frame
+            del self._roar3_frame
+            del self._roar4_frame
+            self._roar1_frame = None
+            self._roar2_frame = None
+            self._roar3_frame = None
+            self._roar4_frame = None
+
+        self.fight_img_cleanup_func = cleanup_roar_images
 
         self.temp_combat_timer = QTimer()
         self.temp_combat_timer.timeout.connect(update_roar)

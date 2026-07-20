@@ -68,6 +68,7 @@ class ScalableCombatBars(QWidget):
         ImgUtils.tint_pixmap(self.bb_pin_img, bb_color)
         self.bb_skull_img               = QPixmap(SharkoConstants.BOSS_BAR_SKULL_PATH)
         self.pb_img                     = QPixmap(SharkoConstants.POSTURE_BAR_BORDER_PATH)
+        self.pb_highlight_img           = QPixmap(SharkoConstants.PARRY_OVERLAY_PATH)
         ImgUtils.tint_pixmap(self.pb_img, outline_color)
         self.pb_pin_img                 = QPixmap(SharkoConstants.POSTURE_BAR_PINS_PATH)
         ImgUtils.tint_pixmap(self.pb_pin_img, outline_color)
@@ -75,18 +76,19 @@ class ScalableCombatBars(QWidget):
         ImgUtils.tint_pixmap(self.plrb_img, outline_color)
         self.plrb_pin_img               = QPixmap(SharkoConstants.PLR_HEALTH_BAR_PINS_PATH)
         ImgUtils.tint_pixmap(self.plrb_pin_img, outline_color)
-        self.icon_border_img            = QPixmap(SharkoConstants.ICON_FRAME_PATH)
-        self.parry_cooldown_icon_img    = QPixmap(SharkoConstants.PARRY_COOLDOWN_ICON_PATH)
         self.bb_crop_border             = 16
         self.pb_crop_border             = 13
-        self.bb_percentage              = 1
-        self.current_bb_percentage      = 1
-        self.pb_percentage              = 1
-        self.current_pb_percentage      = 1
-        self.plrb_percentage            = 1
-        self.current_plrb_percentage    = 1
+        self.pb_highlight_crop_border   = 13
+        self.bb_percentage              = 1.0
+        self.current_bb_percentage      = 1.0
+        self.pb_percentage              = 1.0
+        self.current_pb_percentage      = 1.0
+        self.plrb_percentage            = 1.0
+        self.current_plrb_percentage    = 1.0
         self.bb_x_offset                = 0
         self.bb_y_offset                = 0
+        self.pb_highlight_progress      = 0.0
+        self.was_parry_on_cooldown      = False
         self.bar_height_scale           = bar_height_scale
         self._boss_bar_canvas_offset = QPoint(0, 0)
 
@@ -147,9 +149,14 @@ class ScalableCombatBars(QWidget):
 
     def update_health_fill(self):
         """Update the health fill animation frame."""
-        self.update()
         current_time = time.time()
-        time_held = current_time - self.target_obj.parry_press_time if self.target_obj.f_key_held else 0
+        time_since_last_parry = current_time - self.target_obj.parry_press_time
+        is_parry_on_cooldown = (time_since_last_parry < self.target_obj.PARRY_BLOCK_COOLDOWN)
+        if not is_parry_on_cooldown and self.was_parry_on_cooldown:
+            self.pb_highlight_progress = 1
+        self.was_parry_on_cooldown = is_parry_on_cooldown
+        self.update()
+        time_held = time_since_last_parry if self.target_obj.f_key_held else 0
         if self.target_obj.posture > 0 and time_held < SharkoConstants.PARRY_WINDOW and current_time > self.target_obj.posture_break_cooldown_until:
             self.target_obj.posture = max(0, self.target_obj.posture - 0.003)
         self.pb_percentage = self.target_obj.posture / self.target_obj.MAX_POSTURE
@@ -168,6 +175,7 @@ class ScalableCombatBars(QWidget):
         self._paint_boss_bar(painter)
         self._paint_posture_bar(painter)
         self._paint_player_health_bar(painter)
+        self._paint_posture_bar_highlight(painter)
 
     def _paint_boss_bar(self, painter):
         """Draw the horizontal boss health bar background, fill, border, pins, skull icon, and name text."""
@@ -235,7 +243,7 @@ class ScalableCombatBars(QWidget):
 
     def _paint_posture_bar(self, painter):
         """Draw the vertical posture bar background, fill, border, and pins."""
-        h = int(2 * self.height() // (16 / 5))
+        h = int(self.height() // (8 / 5))
         y_offset = int(self.height() // (16 / 3))
         x_offset = self._boss_bar_canvas_offset.y()
 
@@ -252,7 +260,7 @@ class ScalableCombatBars(QWidget):
         # Foreground Fill
         self.current_pb_percentage += (self.pb_percentage - self.current_pb_percentage) * 0.3
         fill_h = int(max_fill_h * self.current_pb_percentage)
-        
+
         # Invert the fill starting y to make it fill from bottom to top
         fill_y = cap_h // 2 + y_offset + (max_fill_h - fill_h)
         fill_rect = QRect(int(w * 0.125) + x_offset, fill_y, int(w * 0.75), fill_h)
@@ -291,7 +299,7 @@ class ScalableCombatBars(QWidget):
         # Foreground Fill
         self.current_plrb_percentage += (self.plrb_percentage - self.current_plrb_percentage) * 0.3
         fill_h = int(max_fill_h * self.current_plrb_percentage)
-        
+
         # Invert the fill starting y to make it fill from bottom to top
         fill_y = cap_h // 2 + y_offset + (max_fill_h - fill_h)
         fill_rect = QRect(int(w * 0.125) + x_offset, fill_y, int(w * 0.75), fill_h)
@@ -310,3 +318,37 @@ class ScalableCombatBars(QWidget):
             # Pins calculated relative to the inner canvas height and inverted to align with a bottom-up scale
             m_y = int(p * max_fill_h) - mh // 2 + cap_h // 2
             painter.drawPixmap(QRect(x_offset, m_y + y_offset, mw, mh), self.plrb_pin_img)
+
+    def _paint_posture_bar_highlight(self, painter):
+        """Draw a highlight overlay that remains centered on the posture bar."""
+        if self.pb_highlight_progress <= 0:
+            return
+        highlight_height_boost = int((self.height() // 16) * self.pb_highlight_progress)
+        h = int(self.height() // (8 / 5)) + highlight_height_boost
+        y_offset = int(self.height() // (16 / 3)) - highlight_height_boost // 2
+        x_offset = self._boss_bar_canvas_offset.y()
+
+        # Reference geometry from posture bar
+        w_bar = math.floor(self.pb_img.width() * self.scale)
+        cap_h = math.floor(self.pb_crop_border * self.scale)
+        max_fill_h = h - cap_h * 2
+
+        # Highlight image sizepb_highlight_progress
+        sw_h, sh_h = self.pb_highlight_img.width(), self.pb_highlight_img.height()
+        highlight_w = int(sw_h * self.scale * (0.75 + self.pb_highlight_progress * 0.25))
+        src_b_h = self.pb_highlight_crop_border
+        cap_h_h = math.floor(src_b_h * self.scale)
+        self.pb_highlight_progress -= 16 / ((self.target_obj.PARRY_WINDOW) * 1000)
+
+        # Calculate centered draw x
+        top_draw_x = (w_bar - highlight_w) // 2 + x_offset
+
+        # Calculate slice positions
+        mid_slice_y = y_offset + cap_h
+        bot_slice_y = mid_slice_y + max_fill_h
+
+        # Slices
+        painter.setOpacity(self.pb_highlight_progress)
+        painter.drawPixmap(QRect(top_draw_x, y_offset, highlight_w, cap_h_h), self.pb_highlight_img, QRect(0, 0, sw_h, src_b_h))
+        painter.drawPixmap(QRect(top_draw_x, mid_slice_y, highlight_w, max_fill_h), self.pb_highlight_img, QRect(0, src_b_h, sw_h, sh_h - 2 * src_b_h))
+        painter.drawPixmap(QRect(top_draw_x, bot_slice_y, highlight_w, cap_h_h), self.pb_highlight_img, QRect(0, sh_h - src_b_h, sw_h, src_b_h))

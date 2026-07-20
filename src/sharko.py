@@ -40,6 +40,8 @@ from windows_interactive.icons          import IconManager
 from windows_interactive.toasts         import ToastManager
 from windows_interactive.windows_utils  import WindowsUtils
 
+from widgets.main_monitor_clipper       import MainMonitorClipper
+
 from audio_manager                      import AudioManager
 
 from widgets.base_components            import SharkoLabel, MenuStyle, VolumeSlider
@@ -183,12 +185,11 @@ class Sharko(SharkoConstants, IconManager):
         self.attack_active_until        = 0
         self.last_attack_time           = 0
         self.parry_press_time           = 0
-        self.parry_block_active_until         = 0
+        self.parry_block_active_until   = 0
         self.last_parry_block_time      = 0
         self.f_key_held                 = False
         self.posture                    = 0
         self.posture_break_cooldown_until = 0
-
         # ASSET LOADING
         self._load_images()
 
@@ -479,7 +480,7 @@ class Sharko(SharkoConstants, IconManager):
 
     def _play_cutscene_frame(self, cutscene, current_frame, cutscene_preset, repeat_count):
         """Renders a single cutscene frame, handling repeat/talk segments, and then schedules the next frame."""
-        if cutscene_preset == "InactiveCutscene" and self.get_inactive_length() < self.INACTIVE_TIME_REQUIREMENT and current_frame < 6 or self.cutscene_skipped == True:
+        if cutscene_preset == "InactiveCutscene" and self.get_inactive_length() < self.INACTIVE_TIME_REQUIREMENT and current_frame < 6 or self.cutscene_skipped:
             current_frame = 6
             self.talking_disabled = True
         if current_frame == len(cutscene):
@@ -652,11 +653,11 @@ class Sharko(SharkoConstants, IconManager):
         if current_time < self.posture_break_cooldown_until:
             return
         if self.parry_press_time == 0 and current_time - self.last_parry_block_time >= self.PARRY_BLOCK_COOLDOWN:
-            self.last_parry_block_time = current_time
             self._cancel_block_transition()
 
             self.f_key_held = True
-            self.parry_press_time = time.time()
+            self.last_parry_block_time = current_time
+            self.parry_press_time = current_time
             self.parry_block_active_until = self.parry_press_time + self.PARRY_WINDOW
 
             def transition_to_block():
@@ -934,7 +935,7 @@ class Sharko(SharkoConstants, IconManager):
                 self._stop_all_timers()
                 if not self.audio_manager.is_track_playing("theme_loop"):
                     self.audio_manager.play("theme_loop")
-                    self.audio_manager.unload_sound("theme_vamp")
+                self.audio_manager.unload_sound("theme_vamp")
 
                 if self.animation_timer:
                     self.animation_timer.stop()
@@ -942,7 +943,6 @@ class Sharko(SharkoConstants, IconManager):
                     self.animation_timer = None
 
                 self.bar_guis = ScalableCombatBars(bar_height_scale=0.05, target_obj=self)
-                self.bar_guis.pb_percentage = 0
                 self.posture = 0
                 self.posture_break_cooldown_until = 0
                 self.bar_guis.slide_in()
@@ -952,8 +952,9 @@ class Sharko(SharkoConstants, IconManager):
                 self.particles_manager = VFXManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type), screen_shaker=self.screen_shaker)
                 self.screen_shaker.particles_manager = self.particles_manager
                 self.combat_ai = SharkoCombatAI(self)
-                WindowsUtils.disable_desktop_grid_and_autoarrange_universal()
+                self.main_monitor_clipper = MainMonitorClipper(self.window)
 
+                WindowsUtils.disable_desktop_grid_and_autoarrange_universal()
                 self._start_input_listeners()
 
                 self.new_state("fight")
@@ -971,10 +972,14 @@ class Sharko(SharkoConstants, IconManager):
             self.animation_timer.timeout.connect(self.animate)
             self.animation_timer.start(self.ANIMATION_DELAY)
             self._stop_all_timers()
-
+            if hasattr(self, "main_monitor_clipper") and self.main_monitor_clipper:
+                self.main_monitor_clipper.destroy_clipper()
+                self.main_monitor_clipper = None
             for name in self.fight_sound_paths:
                 self.audio_manager.unload_sound(name)
-
+            if hasattr(self, "fight_img_cleanup_func") and self.fight_img_cleanup_func:
+                self.fight_img_cleanup_func()
+                self.fight_img_cleanup_func = None
             if hasattr(self, "combat_ai") and self.combat_ai:
                 del self.combat_ai
                 self.combat_ai = None
@@ -1021,7 +1026,7 @@ class Sharko(SharkoConstants, IconManager):
 
     def sounds_logics(self, volume):
         """Updates volume based on the slider value."""
-        self.sound_volume = volume / 100
+        self.sound_volume = volume / 100 
 
 
 # Initialize and run

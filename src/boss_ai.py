@@ -20,9 +20,9 @@ class SharkoCombatAI:
     def __init__(self, sharko):
         """Initialize the combat ai with tiered attack lists."""
         self.sharko = sharko
-        self.tier_1_attacks = [self._jump_and_attack, self._do_area_belly_flop]
-        self.tier_2_attacks = [self._toast_attack, self._do_laser]
-        self.tier_3_attacks = [self._roar_attack]
+        self.tier_1_attacks = [self._jump_and_attack]#[self._jump_and_attack, self._do_area_belly_flop]
+        self.tier_2_attacks = []#[self._toast_attack, self._do_laser]
+        self.tier_3_attacks = []#[self._roar_attack]
         self.all_attacks = (self.tier_1_attacks + self.tier_2_attacks + self.tier_3_attacks)
         self._first_attack_db = False
 
@@ -35,10 +35,10 @@ class SharkoCombatAI:
         else:
             random_attack = random.choice(self.all_attacks)
         random_attack()
-
         self.sharko.log_stats()
 
     def _inter_attack_idle(self):
+        self.sharko.fight_img_cleanup_func = None
         sharko = self.sharko
         num_idle_frames = sharko.INTER_ATTACK_IDLE_TIME // sharko.ANIMATION_DELAY
         current_idle_frame = 0

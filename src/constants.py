@@ -74,9 +74,7 @@ class SharkoConstants:
     POSTURE_BAR_PINS_PATH       = "assets/UI/posture_bar_pins.png"
     PLR_HEALTH_BAR_PINS_PATH    = "assets/UI/player_health_bar_pins.png"
     BOSS_BAR_SKULL_PATH         = "assets/UI/boss_bar_skull.png"
-    PARRY_OVERLAY_PATH          = "assets/UI/parry_overlay.png"
-    PARRY_COOLDOWN_ICON_PATH    = "assets/UI/boss_bar_skull.png"
-    ICON_FRAME_PATH             = "assets/UI/parry_overlay.png"
+    PARRY_OVERLAY_PATH          = "assets/UI/parry_block_flash_overlay.png"
 
     # Themes
     THEME_VAMP                  = "assets/sounds/boss-phase-music/Theme_Vamp.mp3"
