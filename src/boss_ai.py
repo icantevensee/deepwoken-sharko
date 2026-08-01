@@ -20,9 +20,9 @@ class SharkoCombatAI:
     def __init__(self, sharko):
         """Initialize the combat ai with tiered attack lists."""
         self.sharko = sharko
-        self.tier_1_attacks = [self._jump_and_attack]#[self._jump_and_attack, self._do_area_belly_flop]
-        self.tier_2_attacks = []#[self._toast_attack, self._do_laser]
-        self.tier_3_attacks = []#[self._roar_attack]
+        self.tier_1_attacks = [self._jump_and_attack, self._do_area_belly_flop]
+        self.tier_2_attacks = [self._toast_attack, self._do_laser]
+        self.tier_3_attacks = [self.taskbar_asgore_attack, self._roar_attack]
         self.all_attacks = (self.tier_1_attacks + self.tier_2_attacks + self.tier_3_attacks)
         self._first_attack_db = False
 
@@ -147,3 +147,6 @@ class SharkoCombatAI:
         item_pos = folder_view.GetItemPosition(item)
 
         CombatSystem.jump_and_hit(sharko, item_pos, closest[0], 0.4, on_complete=self._inter_attack_idle)
+
+    def taskbar_asgore_attack(self):
+        CombatSystem.taskbar_asgore_attack(self.sharko, 8, on_complete=self._inter_attack_idle)

@@ -159,6 +159,9 @@ class ToastManager:
                 root = auto.GetRootControl()
                 for win in root.GetChildren():
                     try:
+                        if self._is_deinitialized:
+                            history_manager.clear_with_id(TARGET_AUMID)
+                            return
                         if win.ClassName == 'Windows.UI.Core.CoreWindow':
                             toast_hwnd = win.NativeWindowHandle
                             for el, depth in auto.WalkControl(win, includeTop=False):
@@ -188,6 +191,9 @@ class ToastManager:
                 history_manager.clear_with_id(TARGET_AUMID)
                 return
             time.sleep(0.3)
+            if self._is_deinitialized:
+                history_manager.clear_with_id(TARGET_AUMID)
+                return
             full_stack_img, win_x1, win_y1 = self._capture_window(toast_hwnd, False)
             full_stack_img2, win_x1, win_y1 = self._capture_window(toast_hwnd, True)
 
@@ -286,6 +292,9 @@ class ToastManager:
 
     def animate_constant_speed_frame(self, window_handle, toast_states, w, h):
         """Calculates a clean sine arc that shifts coordinates fluidly to match live cursor movement."""
+        if self._is_deinitialized:
+            return
+
         screen_w = win32api.GetSystemMetrics(0)
         screen_h = win32api.GetSystemMetrics(1)
 

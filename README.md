@@ -24,6 +24,8 @@
     - Run the main Python script to launch the Sharko application.
     - Interact with the Sharko by clicking on the interface and observing its various animations and sounds.
 
+### Download:
+    - [Download ZIP](https://github.com/icantevensee/deepwoken-sharko/archive/refs/heads/Stable_Experimental_Content.zip)
 
 <img src="/img/2.png" width="400">
 

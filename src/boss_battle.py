@@ -15,9 +15,12 @@ import      win32con
 import      win32gui
 
 from ctypes                             import windll
-from PyQt5.QtGui                        import QPixmap, QPainter
-from PyQt5.QtCore                       import QTimer, Qt
 
+from PyQt5.QtGui                        import QPixmap, QPainter, QTransform
+from PyQt5.QtCore                       import QTimer, Qt, QCoreApplication, QPoint, QRect
+from PyQt5.QtWidgets                    import QWidget
+
+from img_utils                          import ImgUtils
 from math_utils                         import MathUtils
 from windows_interactive.windows_utils  import WindowsUtils
 
@@ -39,13 +42,15 @@ class CombatSystem():
 
         posture_amount = self.ATTACK_STATS[attack_type]["posture"]
         damage_amount = self.ATTACK_STATS[attack_type]["damage"]
+        hitstun_info = self.ATTACK_STATS[attack_type]["hitstun"]
 
         if current_time < self.parry_block_active_until or self.f_key_held:
             time_held = current_time - self.parry_press_time if self.f_key_held else 0
             if time_held >= self.PARRY_WINDOW:
                 self.last_parry_block_time = current_time
-                if hasattr(self, "_apply_posture"):
-                    self._apply_posture(posture_amount, damage_amount)
+                overflow = self._apply_posture(posture_amount)
+                if overflow:
+                    CombatSystem.apply_damage_player(self, True, damage_amount, hitstun_info)
                 try:
                     self.audio_manager.play("block", volume=self.sound_volume)
                 except Exception as e:
@@ -54,8 +59,7 @@ class CombatSystem():
                     self.particles_manager.play_block(mouse_x, mouse_y)
             else:
                 self.last_parry_block_time = 0
-                if hasattr(self, "_apply_posture"):
-                    self._apply_posture(-self.POSTURE_PARRY_COST)
+                self._apply_posture(-self.POSTURE_PARRY_COST)
                 try:
                     self.audio_manager.play("parry", volume=self.sound_volume)
                 except Exception as e:
@@ -82,22 +86,39 @@ class CombatSystem():
                 self.block_transition_callback = None
 
         # Play blood effect and hit sound
-        if self.particles_manager:
-            self.particles_manager.play_blood(mouse_x, mouse_y)
-        self.audio_manager.play("hit", volume=self.sound_volume)
+        CombatSystem.apply_damage_player(self, False, damage_amount, hitstun_info)
 
-    def damage_sharko(self):
+    def apply_damage_sharko(self):
         """Reduces the boss’s health and updates the boss bar. Also plays sharko-blood particles and hit sound when the mouse attack hits Sharko."""
         if not hasattr(self, "particles_manager"):
             return
-        self.bar_guis.boss_health -= self.M1_DAMAGE
+        self.bar_guis.boss_health = max(self.bar_guis.boss_health - self.M1_DAMAGE, 0)
         self.bar_guis.bb_percentage = self.bar_guis.boss_health / self.MAX_BOSS_HEALTH
         mouse_x, mouse_y = win32api.GetCursorPos()
         self.particles_manager.play_sharko_blood(mouse_x, mouse_y)
         self.audio_manager.play("hit", volume=self.sound_volume)
 
+    def apply_damage_player(self, posture_break, damage_amount, hitstun_info):
+        """Reduces the player's health and updates the health bar. Also plays blood particles and hit sound."""
+        if not hasattr(self, "particles_manager"):
+            return
+        mouse_x, mouse_y = win32api.GetCursorPos()
+        self.bar_guis.player_health = max(self.bar_guis.player_health - damage_amount, 0)
+        self.bar_guis.plrb_percentage = self.bar_guis.player_health / self.MAX_PLAYER_HEALTH
+
+        self.hurt_vignette.flash_hurt()
+        self.stun_manager.stun(duration_ms=hitstun_info["duration"], speed=hitstun_info["speed"])
+
+        if not posture_break:
+            self.audio_manager.play("hit", volume=self.sound_volume)
+            self.particles_manager.play_blood(mouse_x, mouse_y)
+        else:
+            self.audio_manager.play("posture_break", volume=self.sound_volume)
+            self.particles_manager.play_blood(mouse_x, mouse_y, 20)
+            self._single_shot(300, lambda: self.particles_manager.play_blood(mouse_x, mouse_y, 20) if self.particles_manager else None)
+
     def mouse_attack(self, x, y):
-        """Checks whether a click is within Destroyman III's hitbox which changes based on the way it's facing and, if so, calls damage_sharko."""
+        """Checks whether a click is within Destroyman III's hitbox which changes based on the way it's facing and, if so, calls apply_damage_sharko."""
         sprite_x, sprite_y = None, None
         current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
         if self.current_facing == "Left":
@@ -107,7 +128,7 @@ class CombatSystem():
         print(x, y, sprite_x, sprite_y)
 
         if sprite_x <= x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= y <= sprite_y + self.SPRITE_HEIGHT:
-            CombatSystem.damage_sharko(self)
+            CombatSystem.apply_damage_sharko(self)
 
     def jump(self, jump_end, speed, on_complete=None):
         """Executes a full jump animation for Sharko, including bezier trajectory, sprite frame selection based on slope, and hit detection against the mouse."""
@@ -212,12 +233,14 @@ class CombatSystem():
                     on_complete()
 
         def cleanup_jump_images():
-            self.jump_images.clear()
-            self.alt_jump_images.clear()
-            del self.jump_images
-            del self.alt_jump_images
-            self.jump_images = None
-            self.alt_jump_images = None
+            if self.jump_images:
+                self.jump_images.clear()
+                del self.jump_images
+                self.jump_images = None
+            if self.alt_jump_images:
+                self.alt_jump_images.clear()
+                del self.alt_jump_images
+                self.alt_jump_images = None
 
         self.fight_img_cleanup_func = cleanup_jump_images
         step_move()
@@ -349,7 +372,7 @@ class CombatSystem():
                 self._single_shot(int(dt * 1000), step_move)
             else:
                 if hasattr(self, "screen_shaker") and self.screen_shaker:
-                    self.screen_shaker.shake(duration_ms=2500, intensity=35)
+                    self.screen_shaker.shake(duration_ms=2500, intensity=135)
                 self.window.move(int(end_x + offset), int(end_y))
                 cleanup_jump_images()
                 self.current_facing = "Right" if offset == 0 else "Left"
@@ -525,7 +548,6 @@ class CombatSystem():
             if hasattr(self, "label") and self.label:
                 self.label.clear()
 
-            from PyQt5.QtCore import QCoreApplication
             self.window.repaint()
             QCoreApplication.processEvents()
 
@@ -681,6 +703,356 @@ class CombatSystem():
         self.temp_combat_timer = QTimer()
         self.temp_combat_timer.timeout.connect(update_roar)
         self.temp_combat_timer.start(self.ANIMATION_DELAY // 2)
+
+    def taskbar_asgore_attack(self, num_attacks=4, on_complete=None):
+
+        self._standing_frame = QPixmap(os.path.join(self.IMAGES_PATH, "forwards_standing.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "forwards_standing.png")).transformed(self.horizontal_flip)
+        self._hands_frame = QPixmap(os.path.join(self.IMAGES_PATH, "hands.png"))
+        self._blurred_movement_frame = QPixmap(os.path.join(self.IMAGES_PATH, "blurred_frame.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "blurred_frame.png")).transformed(self.horizontal_flip)
+
+        self.taskbar_pixmap, start_x, start_y = WindowsUtils.capture_taskbar_pixmap(self.app)
+        window_start_x, window_start_y = self.window.geometry().x(), self.window.geometry().y()
+        screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
+
+        swing_angle_degrees = 40
+        inner_radius_ratio = 0.05
+        taskbar_scale_factor = (2.15 * self.WINDOW_SIZE_X) / screen_width
+        self.last_window_offset_y = 0
+        self.last_taskbar_offset_y = 0
+
+        self.hand_transparency_fade_dir = None
+
+        window_offset_x = int(self.WINDOW_SIZE_X * -0.75) if self.current_facing == "Right" else -self.WINDOW_SIZE_X // 4
+        window_offset_y = int(self.WINDOW_SIZE_Y * -2)
+
+        default_taskbar_offset_x = int(math.sin(math.radians(swing_angle_degrees)) * screen_width * (taskbar_scale_factor / 2 + inner_radius_ratio * taskbar_scale_factor))
+        taskbar_adjust_offset_y = int(self.WINDOW_SIZE_Y * -0.9)
+        default_taskbar_offset_y = taskbar_adjust_offset_y - int(math.cos(math.radians(swing_angle_degrees)) * screen_width * (taskbar_scale_factor / 2 + inner_radius_ratio * taskbar_scale_factor))
+
+        class TaskbarOverlayWindow(QWidget):
+            def __init__(self, hands_pixmap, parent=None):
+                super().__init__(parent)
+                self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.SubWindow)
+                self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+                self.setGeometry(0, 0, screen_width, screen_height - 1)
+
+                self.fade_percentage = 0
+                self._current_pixmap = QPixmap()
+                self._hands_pixmap = hands_pixmap
+
+            def update_appearance(self, pixmap, x, y, angle, scale, horizontally_flipped, vertically_flipped, fade_dir):
+                """Atomically locks the geometry boundaries and image target together."""
+                self._current_pixmap = pixmap
+                self._current_x, self._current_y = x, y
+                self._current_angle = angle
+                self._current_scale = scale
+                self.horizontally_flipped = horizontally_flipped
+                self._is_vertically_flipped = -1 if vertically_flipped else 1
+                self.fade_dir = fade_dir
+                self.update()
+
+            def paintEvent(self, event):
+                """Draws the tracking frame perfectly aligned to the canvas bounding box."""
+                if not self._current_pixmap.isNull():
+                    painter = QPainter(self)
+                    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+                    painter.save()
+
+                    target_center = self.rect().center()
+                    painter.translate(target_center)
+                    painter.translate(self._current_x, self._current_y)
+                    painter.rotate(self._current_angle)
+                    painter.scale(self._current_scale, self._current_scale)
+
+                    painter.save()
+
+                    painter.scale(self.horizontally_flipped, self._is_vertically_flipped)
+                    pixmap_rect = self._current_pixmap.rect()
+                    pixmap_rect.moveCenter(QPoint(0, 0))
+                    painter.drawPixmap(pixmap_rect, self._current_pixmap)
+                    painter.restore()
+
+                    if self.fade_dir:
+                        if self.fade_dir == 1:
+                            self.fade_percentage = max(0, min(self.fade_percentage + 0.2, 1))
+                        else:
+                            self.fade_percentage = max(0, min(self.fade_percentage - 0.2, 1))
+
+                        painter.setOpacity(self.fade_percentage)
+
+                        stick_w = self._current_pixmap.width()
+                        pixels_from_center = int(stick_w * 0.35)
+
+                        painter.translate(pixels_from_center, 0)
+
+                        painter.scale(self.horizontally_flipped, self._is_vertically_flipped)
+                        inv_scale = 1 / self._current_scale
+                        painter.scale(inv_scale, inv_scale)
+
+                        hand_w = self._hands_pixmap.width()
+                        hand_h = self._hands_pixmap.height()
+                        hands_rect = QRect(0, 0, hand_w, hand_h)
+                        hands_rect.moveCenter(QPoint(0, 0))
+
+                        painter.drawPixmap(hands_rect, self._hands_pixmap)
+
+                    painter.restore()
+                    painter.end()
+
+        self.taskbar_window = TaskbarOverlayWindow(self._hands_frame)
+        self.taskbar_window.show()
+
+        def start_bezier_trajectory(start_x, start_y, direction):
+            """Initializes the incoming Bezier curve trajectory toward the cursor."""
+            if direction == 1:
+                self.label.setPixmap(self._blurred_movement_frame)
+
+            start_x, start_y = start_x, start_y - (screen_height - 1) // 2
+            mouse_x, mouse_y = win32api.GetCursorPos()
+            initial_target_x = mouse_x - screen_width // 2
+            initial_target_y = mouse_y - (screen_height - 1) // 2
+
+            delta_x = initial_target_x - float(start_x)
+            delta_y = initial_target_y - float(start_y)
+            distance = math.hypot(delta_x, delta_y)
+
+            if distance > 0:
+                perpendicular_x = -delta_y / distance
+                perpendicular_y = delta_x / distance
+            else:
+                perpendicular_x, perpendicular_y = 1.0, 0.0
+
+            curve_amplitude = distance * 2
+            control_point_x = float(start_x) + (delta_x * 0.5) + (perpendicular_x * curve_amplitude)
+            control_point_y = float(start_y) + (delta_y * 0.5) + (perpendicular_y * curve_amplitude)
+
+            trajectory_state = {
+                "direction": direction,
+                "start_x": float(start_x),
+                "start_y": float(start_y),
+                "control_x": control_point_x,
+                "control_y": control_point_y,
+                "current_frame": 0 if direction == 1 else 100,
+                "total_frames": 100,
+                "current_rotation": 0.0,
+                "max_spin_speed": random.uniform(22.0, 32.0),
+                "initial_scale": 1.0,
+                "final_scale": taskbar_scale_factor,
+                "max_pixmap_spin": 360.0 + 90.0 + swing_angle_degrees,
+            }
+            animate_bezier_frame(trajectory_state)
+
+        def animate_bezier_frame(trajectory_state):
+            """Calculates the taskbar's quadratic Bezier motion toward the cursor."""
+            trajectory_state["current_frame"] += 1 * trajectory_state["direction"]
+            total_frames = trajectory_state["total_frames"]
+            current_frame = trajectory_state["current_frame"]
+
+            if current_frame == 2:
+                WindowsUtils.toggle_taskbar_visibility(False)
+            self.taskbar_window.raise_()
+
+            if trajectory_state["direction"] == 1:
+                if current_frame == total_frames * 4 // 5:
+                    self.label.setPixmap(self._standing_frame)
+
+                if current_frame == total_frames // 10:
+                    self.label.setPixmap(self.qpixmaps["staringframe"] if self.current_facing  == "Right" else self.qpixmaps["staringframe"].transformed(self.horizontal_flip))
+            else:
+                if current_frame == total_frames * 3 // 4:
+                    self.label.setPixmap(self.qpixmaps["staringframe"] if self.current_facing  == "Right" else self.qpixmaps["staringframe"].transformed(self.horizontal_flip))
+
+                if current_frame == total_frames // 10:
+                    self.label.setPixmap(self._blurred_movement_frame)
+
+            mouse_x, mouse_y = win32api.GetCursorPos()
+
+            window_offset_target_y = window_offset_y
+
+            is_offscreen = mouse_y + window_offset_target_y + (self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT) <= 0
+            if is_offscreen:
+                window_offset_target_y = -window_offset_y - self.WINDOW_SIZE_Y
+            window_offset_y_lerped = self.last_window_offset_y  + (window_offset_target_y - self.last_window_offset_y) * 0.2
+            self.last_window_offset_y = window_offset_y_lerped
+
+            window_target_x, window_target_y = mouse_x + window_offset_x, mouse_y + int(window_offset_y_lerped)
+
+            window_lerp_percentage = min(1, (current_frame * 10) / total_frames)
+            self.window.move(
+                int(window_start_x + window_lerp_percentage * (window_target_x - window_start_x)),
+                int(window_start_y + window_lerp_percentage * (window_target_y - window_start_y)),
+            )
+            interpolation_t = current_frame / total_frames
+
+            taskbar_offset_target_y = default_taskbar_offset_y
+
+            if is_offscreen:
+                taskbar_offset_target_y = - default_taskbar_offset_y + (self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT)
+            taskbar_offset_y_lerped = self.last_taskbar_offset_y  + (taskbar_offset_target_y - self.last_taskbar_offset_y) * 0.2
+            self.last_taskbar_offset_y = taskbar_offset_y_lerped
+
+            live_target_x = mouse_x - screen_width // 2 + default_taskbar_offset_x
+            live_target_y = mouse_y - int((screen_height - 1) // 2) + int(taskbar_offset_y_lerped)
+
+            bezier_start = (1.0 - interpolation_t) * (1.0 - interpolation_t)
+            bezier_control = 2.0 * (1.0 - interpolation_t) * interpolation_t
+            bezier_target = interpolation_t * interpolation_t
+
+            final_x = (
+                bezier_start * trajectory_state["start_x"]
+                + bezier_control * trajectory_state["control_x"]
+                + bezier_target * live_target_x
+            )
+            final_y = (
+                bezier_start * trajectory_state["start_y"]
+                + bezier_control * trajectory_state["control_y"]
+                + bezier_target * live_target_y
+            )
+
+            spin_intensity = math.sin(interpolation_t * math.pi)
+            trajectory_state["current_rotation"] += trajectory_state["max_spin_speed"] * spin_intensity
+
+            current_scale = trajectory_state["initial_scale"] + (trajectory_state["final_scale"] - trajectory_state["initial_scale"]) * interpolation_t
+            current_angle = trajectory_state["max_pixmap_spin"] * interpolation_t
+
+            self.taskbar_window.update_appearance(self.taskbar_pixmap, int(final_x), int(final_y), current_angle * (1 if not is_offscreen else -1), current_scale, 1, is_offscreen, self.hand_transparency_fade_dir)
+
+            if current_frame <= total_frames and current_frame > 0:
+                self._single_shot(16, lambda: animate_bezier_frame(trajectory_state))
+            elif trajectory_state["direction"] == 1:
+                initialize_main_attack_sequence()
+            elif trajectory_state["direction"] == -1:
+                cleanup_asgore_attack()
+                if on_complete:
+                    self._single_shot(0, on_complete)
+
+        def initialize_main_attack_sequence():
+            self.hand_transparency_fade_dir = 1
+            self.label.setPixmap(self._standing_frame)
+
+            self._taskbar_smear_frame_1, smear_scale = ImgUtils.draw_solid_semicircle_window(
+                self.taskbar_pixmap,
+                screen_width * inner_radius_ratio,
+                swing_angle_degrees,
+            )
+            smear_scale *= taskbar_scale_factor
+            transform = QTransform()
+            transform.scale(smear_scale, smear_scale)
+            self._taskbar_smear_frame_1 = self._taskbar_smear_frame_1.transformed(transform, Qt.SmoothTransformation)
+
+            self._taskbar_smear_frame_2, smear_scale = ImgUtils.draw_blurred_semicircle_window(
+                self.taskbar_pixmap,
+                screen_width * inner_radius_ratio,
+                swing_angle_degrees,
+            )
+            smear_scale *= taskbar_scale_factor
+            transform = QTransform()
+            transform.scale(smear_scale, smear_scale)
+            self._taskbar_smear_frame_2 = self._taskbar_smear_frame_2.transformed(transform, Qt.SmoothTransformation)
+
+            self.swings_remaining = num_attacks
+            print("Initializing main attack sequence...")
+            start_swing_animation(1)
+
+        def start_swing_animation(direction=1):
+            swing_state = {
+                "direction": direction,
+                "current_frame": 0,
+                "total_frames": 16,
+                "windup_frame_limit": 10,
+                "solid_smear_frame_limit": 12,
+                "blurred_smear_frame_limit": 16,
+            }
+            animate_swing_frame(swing_state)
+
+        def animate_swing_frame(swing_state):
+            swing_state["current_frame"] += 1
+            total_frames = swing_state["total_frames"]
+            current_frame = swing_state["current_frame"]
+
+            if current_frame > total_frames:
+                self.swings_remaining -= 1
+                if self.swings_remaining > 0:
+                    start_swing_animation(swing_state["direction"] * -1)
+                else:
+                    self.hand_transparency_fade_dir = -1
+                    start_bezier_trajectory(start_x, start_y, -1)
+                return
+            mouse_x, mouse_y = win32api.GetCursorPos()
+
+            window_offset_target_y = window_offset_y
+
+            is_offscreen = mouse_y + window_offset_target_y + (self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT) <= 0
+            if is_offscreen:
+                window_offset_target_y = -window_offset_y - self.WINDOW_SIZE_Y
+            window_offset_y_lerped = self.last_window_offset_y  + (window_offset_target_y - self.last_window_offset_y) * 0.2
+            self.last_window_offset_y = window_offset_y_lerped
+
+            window_target_x, window_target_y = mouse_x + window_offset_x, mouse_y + int(window_offset_y_lerped)
+
+            if current_frame <= swing_state["windup_frame_limit"]:
+                swing_factor = -math.sin((current_frame / swing_state["windup_frame_limit"]) * math.pi)
+                current_angle = (swing_factor / 3 + 1) * swing_angle_degrees * swing_state["direction"] + 90.0
+
+                swing_offset_x = int(swing_factor * -30 + 1)
+                current_taskbar_offset_x = int(math.sin(math.radians(current_angle - 90)) * screen_width * (taskbar_scale_factor / 2 + inner_radius_ratio * taskbar_scale_factor) + swing_offset_x)
+                current_taskbar_offset_y = taskbar_adjust_offset_y - int(math.cos(math.radians(current_angle - 90)) * screen_width * (taskbar_scale_factor / 2 + inner_radius_ratio * taskbar_scale_factor))
+                final_x = mouse_x - screen_width // 2 + current_taskbar_offset_x
+                if not is_offscreen:
+                    final_y = mouse_y - (screen_height - 1) // 2 + current_taskbar_offset_y
+                else:
+                    final_y = mouse_y - (screen_height - 1) // 2 - current_taskbar_offset_y + (self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT)
+
+                self.window.move(window_target_x + swing_offset_x, window_target_y)
+                self.taskbar_window.update_appearance(self.taskbar_pixmap, final_x, final_y, current_angle * (1 if not is_offscreen else -1), 0.3, swing_state["direction"], is_offscreen, self.hand_transparency_fade_dir)
+            elif current_frame <= swing_state["solid_smear_frame_limit"]:
+                self.window.move(window_target_x, window_target_y)
+                smear_y_pos = mouse_y - (screen_height - 1) // 2 + taskbar_adjust_offset_y if not is_offscreen else mouse_y - (screen_height - 1) // 2 - taskbar_adjust_offset_y + (self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT)
+                self.taskbar_window.update_appearance(
+                    self._taskbar_smear_frame_1,
+                    mouse_x - screen_width // 2,
+                    smear_y_pos,
+                    0,
+                    1, swing_state["direction"], is_offscreen, None)
+            elif current_frame <= swing_state["blurred_smear_frame_limit"]:
+                if current_frame == swing_state["blurred_smear_frame_limit"]:
+                    self._single_shot(0, lambda: CombatSystem.damage(self, "asgore_attack_swing"))
+                self.window.move(window_target_x, window_target_y)
+                smear_y_pos = mouse_y - (screen_height - 1) // 2 + taskbar_adjust_offset_y if not is_offscreen else mouse_y - (screen_height - 1) // 2 - taskbar_adjust_offset_y + (self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT)
+                self.taskbar_window.update_appearance(
+                    self._taskbar_smear_frame_2,
+                    mouse_x - screen_width // 2,
+                    smear_y_pos,
+                    0,
+                    1, swing_state["direction"], is_offscreen, None)
+
+            self._single_shot(16, lambda: animate_swing_frame(swing_state))
+
+        def cleanup_asgore_attack():
+            """Releases the temporary Asgore overlay state created for this attack."""
+            if hasattr(self, "taskbar_window") and self.taskbar_window:
+                self.taskbar_window.close()
+                self.taskbar_window.deleteLater()
+                self.taskbar_window = None
+
+            self.swings_remaining, self. last_window_offset_y, self.last_taskbar_offset_y = None, None, None
+
+            del self.taskbar_pixmap
+            del self._taskbar_smear_frame_1
+            del self._taskbar_smear_frame_2
+            del self._standing_frame
+            del self._hands_frame
+            del self._blurred_movement_frame
+            self._taskbar_smear_frame_1 = None
+            self._taskbar_smear_frame_2 = None
+            self._standing_frame = None
+            self._hands_frame = None
+            self._blurred_movement_frame = None
+
+            WindowsUtils.toggle_taskbar_visibility(True)
+
+        self.fight_img_cleanup_func = cleanup_asgore_attack
+        start_bezier_trajectory(start_x, start_y, 1)
 
     def summon_sword(self):
         """Creates a sword window if not already present."""

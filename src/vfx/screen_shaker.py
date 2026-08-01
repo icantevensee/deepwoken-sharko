@@ -9,10 +9,7 @@ import random
 import time
 from ctypes import c_bool, c_uint32, c_void_p, windll
 
-from PyQt5.QtCore import (
-    Qt,
-    QTimer,
-)
+from PyQt5.QtCore import Qt, QTimer, QCoreApplication, QRect
 from PyQt5.QtGui import QImage, QPainter
 from PyQt5.QtWidgets import QWidget
 
@@ -131,6 +128,7 @@ class ScreenShaker(QWidget):
         self.offset_x = 0
         self.offset_y = 0
         self.update()
+        QCoreApplication.processEvents()
         self.hide()
 
     def paintEvent(self, event):
@@ -142,6 +140,12 @@ class ScreenShaker(QWidget):
         painter.fillRect(0, 0, self.width, self.height, Qt.black)
         painter.drawImage(self.offset_x, self.offset_y, self.captured_image)
 
+        if hasattr(self.hurt_vignette, '_base_vignette_mask') and self.hurt_vignette._intensity > 0:
+            target_rect = QRect(self.offset_x, self.offset_y, self.hurt_vignette.width, self.hurt_vignette.height)
+            painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            painter.setOpacity(self.hurt_vignette._intensity)
+            painter.drawPixmap(target_rect, self.hurt_vignette._base_vignette_mask)
+
     def deinitialize(self):
         """Release some dxcam resources and cleanup the shaker."""
         if hasattr(self, "loop_timer") and self.loop_timer:
@@ -152,6 +156,7 @@ class ScreenShaker(QWidget):
             self.camera.release()
             self.camera = None
         self.particles_manager = None
+        self.hurt_vignette = None
         self.captured_image = None
         self.current_frame = None
         self.hide()

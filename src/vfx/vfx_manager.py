@@ -274,7 +274,7 @@ class VFXManager(QWidget):
         user32.SetWindowDisplayAffinity.restype = c_bool
         user32.SetWindowDisplayAffinity(int(self.winId()), SharkoConstants.WDA_EXCLUDEFROMCAPTURE)
         if getattr(sys, 'frozen', False):
-            self.script_dir = os.path.join(os.path.dirname(sys.executable), 'src')
+            self.script_dir = os.path.join(os.path.dirname(sys.executable), 'src/vfx')
         else:
             self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self._load_assets()
@@ -361,8 +361,8 @@ class VFXManager(QWidget):
         for _ in range(7):
             self.particles.append(Particle(x, y, "block"))
 
-    def play_blood(self, x, y):
-        for _ in range(7):
+    def play_blood(self, x, y, amount=7):
+        for _ in range(amount):
             self.particles.append(Particle(x, y, "blood"))
 
     def play_sharko_blood(self, x, y):

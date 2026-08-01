@@ -39,7 +39,14 @@ class AudioManager:
                 volume=config["volume"]
             )
         return self._loaded_sounds[name]
-    
+
+    def set_sound_volume(self, name, volume):
+        """Sets the volume of a specific sound."""
+        if name not in self._loaded_sounds:
+            return
+        sound = self._loaded_sounds[name]
+        sound.set_volume(volume)
+
     def is_track_playing(self, name):
         """Check if a track has playing instances."""
         sound = self._loaded_sounds.get(name)
@@ -101,6 +108,13 @@ class PitchedSound(QObject):
         player.stateChanged.connect(self._handle_state_change)
         self.active_players.add(player)
         player.play()
+
+    def set_volume(self, volume):
+        """Sets the volume of all of that sound."""
+        self.volume = max(0.0, min(1.0, volume))
+        qt_volume = int(self.volume * 100)
+        for player in self.active_players:
+            player.setVolume(qt_volume)
 
     def stop(self):
         """Instantly terminates all overlapping streams and clears RAM."""

@@ -37,6 +37,19 @@ class WindowsUtils:
         return max(lo, min(hi, v))
 
     @staticmethod
+    def get_windows_mouse_speed():
+        """Retrieves the current mouse speed (1-20)"""
+        speed = ctypes.c_int()
+        ctypes.windll.user32.SystemParametersInfoW(SharkoConstants.SPI_GETMOUSESPEED, 0, ctypes.byref(speed), 0)
+        return speed.value
+
+    @staticmethod
+    def set_windows_mouse_speed(speed):
+        """Sets the current mouse speed (1-20)"""
+        target_speed = max(1, min(int(speed), 20))
+        ctypes.windll.user32.SystemParametersInfoW(SharkoConstants.SPI_SETMOUSESPEED, 0, ctypes.c_void_p(target_speed), SharkoConstants.SPIF_UPDATEINIFILE | SharkoConstants.SPIF_SENDCHANGE)
+
+    @staticmethod
     def disable_desktop_grid_and_autoarrange_universal():
         """Disable auto arrange and snap to grid settings for the desktop icon list view view using Win32 apis."""
         desktop_shell_view = [0]
@@ -351,3 +364,48 @@ class WindowsUtils:
 
         print("Failed to find shortcut before timeout, defaulting to last index.")
         return win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_GETITEMCOUNT, 0, 0) - 1
+
+    @staticmethod
+    def capture_taskbar_pixmap(qapplication):
+        """Forces the taskbar to pop up, captures its region as a QPixmap, and returns it."""
+        user32 = ctypes.windll.user32
+
+        hwnd_taskbar = user32.FindWindowW("Shell_TrayWnd", None)
+        if not hwnd_taskbar:
+            return
+
+        hwnd_start = user32.FindWindowExW(hwnd_taskbar, 0, "Start", None) or user32.FindWindowExW(hwnd_taskbar, 0, "Button", None)
+
+        if not hwnd_start:
+            return
+
+        user32.SetForegroundWindow(hwnd_start)
+        time.sleep(0.75)
+
+        rect = ctypes.wintypes.RECT()
+        if user32.GetWindowRect(hwnd_taskbar, ctypes.byref(rect)):
+            tb_x = rect.left
+            tb_y = rect.top
+            tb_w = rect.right - rect.left
+            tb_h = rect.bottom - rect.top
+
+            screen = qapplication.primaryScreen()
+            taskbar_pixmap = screen.grabWindow(0, tb_x, tb_y, tb_w, tb_h)
+        else:
+            return
+
+        hwnd_foreground = user32.GetForegroundWindow()
+        if hwnd_foreground and hwnd_foreground != hwnd_taskbar:
+            user32.SetForegroundWindow(hwnd_foreground)
+        return taskbar_pixmap, tb_x, tb_y
+
+    @staticmethod
+    def toggle_taskbar_visibility(visible):
+        """Shows or hides the primary Windows taskbar container."""
+        user32 = ctypes.windll.user32
+        hwnd_taskbar = user32.FindWindowW("Shell_TrayWnd", None)
+        if hwnd_taskbar:
+            cmd_show = 5 if visible else 0  # 5 = SW_SHOW, 0 = SW_HIDE
+            user32.ShowWindow(hwnd_taskbar, cmd_show)
+        else:
+            print("Error: Could not locate the Taskbar handle to toggle visibility.")

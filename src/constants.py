@@ -92,6 +92,7 @@ class SharkoConstants:
     PARRY_SOUND                 = "assets/sounds/fight-sfx/Parry.mp3"
     BLOCK_SOUND                 = "assets/sounds/fight-sfx/Block.mp3"
     HIT_SOUND                   = "assets/sounds/fight-sfx/Hit.mp3"
+    POSTURE_BREAK_SOUND         = "assets/sounds/fight-sfx/Posture_Break.mp3"
 
     # fight sfx
     LONG_ROAR_SOUND             = "assets/sounds/fight-sfx/Long_Roar1.mp3"
@@ -111,12 +112,13 @@ class SharkoConstants:
 
     # Attack statistics
     ATTACK_STATS = {
-        "icon_attack": {"damage": 20, "posture": 3},
-        "toast_attack": {"damage": 40, "posture": 5},
-        "falling_sharko": {"damage": 100, "posture": 15},
-        "jump": {"damage": 20, "posture": 2},
-        "single_lazer_hit": {"damage": 5, "posture": 1},
-        "sword_slash": {"damage": 25, "posture": 3},
+        "icon_attack": {"damage": 20, "posture": 3, "hitstun": {"duration": 500, "speed": 2}},
+        "toast_attack": {"damage": 40, "posture": 5, "hitstun": {"duration": 1000, "speed": 3}},
+        "falling_sharko": {"damage": 100, "posture": 15, "hitstun": {"duration": 1500, "speed": 1}},
+        "jump": {"damage": 20, "posture": 2, "hitstun": {"duration": 1000, "speed": 3}},
+        "single_lazer_hit": {"damage": 5, "posture": 1, "hitstun": {"duration": 500, "speed": 3}},
+        "asgore_attack_swing": {"damage": 30, "posture": 8, "hitstun": {"duration": 500, "speed": 1}},
+        "sword_slash": {"damage": 25, "posture": 3, "hitstun": {"duration": 2000, "speed": 2}},
     }
 
     # Fonts
@@ -128,6 +130,10 @@ class SharkoConstants:
     IID_IFolderView         = "{CDE725B0-CCC9-4519-917E-325D72FAB4CE}"
 
     # Windows API constants
+    SPI_GETMOUSESPEED       = 0x0070
+    SPI_SETMOUSESPEED       = 0x0071
+    SPIF_UPDATEINIFILE      = 0x01
+    SPIF_SENDCHANGE         = 0x02
     LVS_EX_SNAPTOGRID       = 0x00080000
     WDA_EXCLUDEFROMCAPTURE  = 0x00000011
     SWC_DESKTOP             = 0x08
@@ -178,13 +184,13 @@ class SharkoConstants:
     }
 
     try:
-        file = open("Lines.txt", "r", encoding="utf-8")
+        file = open("dialouge/lines.txt", "r", encoding="utf-8")
         Lines = file.readlines()
         clean_lines = [_decode_escapes(line.strip()) for line in Lines]
         Lines = clean_lines
     except Exception:
         try:
-            file = open("Lines.txt", "r")
+            file = open("dialouge/lines.txt", "r")
             Lines = [line.strip() for line in file.readlines()]
         except Exception:
             Lines = []
@@ -193,7 +199,7 @@ class SharkoConstants:
             file.close()
         except Exception:
             pass
-    file = open("removal_lines+intro_line.txt", "r", encoding="utf-8")
+    file = open("dialouge/removal_lines+intro_line.txt", "r", encoding="utf-8")
     removal_intro_lines = file.readlines()
     removal_lines = []
 
@@ -205,7 +211,7 @@ class SharkoConstants:
             intro_line = decoded
     file.close()
 
-    file = open("Questions.txt", "r", encoding="utf-8")
+    file = open("dialouge/questions.txt", "r", encoding="utf-8")
     question_lines = file.readlines()
     Questions = []
     for index, line in enumerate(question_lines):

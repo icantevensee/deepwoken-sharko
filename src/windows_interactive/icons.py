@@ -21,6 +21,8 @@ from boss_battle                        import CombatSystem
 from constants                          import SharkoConstants
 from windows_interactive.windows_utils  import WindowsUtils
 
+from PyQt5.QtCore import QTimer
+
 throw_lock = threading.Lock()
 
 
@@ -114,7 +116,7 @@ class IconManager:
 
                 if not hit_registered and math.dist((x + desktop_left + cell_h // 2, y + desktop_top + cell_h // 2), (mx, my)) < cell_h // 2:
                     hit_registered = True
-                    CombatSystem.damage(self, "icon_attack")
+                    self.input_emitter.damage_signal.emit("icon_attack")
 
                 pos = win32api.MAKELONG(int(x), int(y))
                 win32gui.SendMessage(hwnd_lv, SharkoConstants.LVM_SETITEMPOSITION, index, pos)

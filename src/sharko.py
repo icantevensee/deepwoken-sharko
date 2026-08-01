@@ -29,6 +29,7 @@ from PyQt5.QtCore                       import Qt, QTimer, QObject, pyqtSignal
 from widgets.bar_guis                   import ScalableCombatBars
 from vfx.vfx_manager                    import VFXManager
 from vfx.warnings_manager               import MultiWarningOverlay
+from vfx.hurt_vignette                  import HurtVignetteOverlay
 from vfx.screen_shaker                  import ScreenShaker
 from vfx.tile                           import Tile
 
@@ -39,6 +40,7 @@ from constants                          import SharkoConstants
 from windows_interactive.icons          import IconManager
 from windows_interactive.toasts         import ToastManager
 from windows_interactive.windows_utils  import WindowsUtils
+from windows_interactive.stun_manager   import MouseStunManager
 
 from widgets.main_monitor_clipper       import MainMonitorClipper
 
@@ -75,6 +77,7 @@ class InputSignalEmitter(QObject):
     f_pressed = pyqtSignal()
     f_released = pyqtSignal()
     action_triggered = pyqtSignal(int, int, object)
+    damage_signal = pyqtSignal(str)
 
 
 class Sharko(SharkoConstants, IconManager):
@@ -130,6 +133,7 @@ class Sharko(SharkoConstants, IconManager):
         self.current_facing = "Right"
         self.current_state = "greeting"
         self.frame = 0
+        WindowsUtils.toggle_taskbar_visibility(True)
 
         # GAME STATE FLAGS
         self.talking_disabled       = False
@@ -153,6 +157,7 @@ class Sharko(SharkoConstants, IconManager):
             "parry": [self.PARRY_SOUND, True, False],
             "block": [self.BLOCK_SOUND, True, False],
             "hit": [self.HIT_SOUND, True, False],
+            "posture_break": [self.POSTURE_BREAK_SOUND, True, False],
             "long_roar": [self.LONG_ROAR_SOUND, False, False],
             "dread_breath": [self.DREAD_BREATH_SOUND, False, False],
             "roar_1": [self.ROAR_SOUND_1, False, False],
@@ -179,6 +184,7 @@ class Sharko(SharkoConstants, IconManager):
         self.particles_manager = None
         self.sword_window = None
         self.warning_manager = None
+        self.hurt_vignette = None
 
         # PARRY AND BLOCK MECHANICS
         self.attack_press_time          = 0
@@ -235,6 +241,7 @@ class Sharko(SharkoConstants, IconManager):
         self.input_emitter.f_pressed.connect(self._on_f_pressed_safe, Qt.QueuedConnection)
         self.input_emitter.f_released.connect(self._on_f_released_safe, Qt.QueuedConnection)
         self.input_emitter.action_triggered.connect(self._on_action_safe, Qt.QueuedConnection)
+        self.input_emitter.damage_signal.connect(lambda attack_type: CombatSystem.damage(self, attack_type), Qt.QueuedConnection)
 
         self.keyboard_listener = None
         self.mouse_listener = None
@@ -310,7 +317,7 @@ class Sharko(SharkoConstants, IconManager):
         overflow = new_posture >= max_posture and posture_amount > 0
         return new_posture, overflow
 
-    def _apply_posture(self, posture_amount, would_be_damage=0):
+    def _apply_posture(self, posture_amount):
         """Adjust posture and trigger the posture-broken state if it fills up."""
         current_posture = self.posture
         new_posture, overflow = self._calculate_new_posture(current_posture, posture_amount, self.MAX_POSTURE)
@@ -321,7 +328,7 @@ class Sharko(SharkoConstants, IconManager):
             self._cancel_block_transition()
             self.posture_break_cooldown_until = time.time() + self.POSTURE_BREAK_COOLDOWN
         self.posture = new_posture
-        return new_posture
+        return overflow
 
     def _create_gui(self):
         """Create and configure the gui elements (label, menus, window properties)."""
@@ -934,7 +941,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.suppress_right_click = True
                 self._stop_all_timers()
                 if not self.audio_manager.is_track_playing("theme_loop"):
-                    self.audio_manager.play("theme_loop")
+                    self.audio_manager.play("theme_loop", volume=self.sound_volume)
                 self.audio_manager.unload_sound("theme_vamp")
 
                 if self.animation_timer:
@@ -947,12 +954,14 @@ class Sharko(SharkoConstants, IconManager):
                 self.posture_break_cooldown_until = 0
                 self.bar_guis.slide_in()
                 self.warning_manager = MultiWarningOverlay()
+                self.hurt_vignette = HurtVignetteOverlay()
                 self.screen_shaker = ScreenShaker()
                 self.toast_manager = ToastManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type))
                 self.particles_manager = VFXManager(damage_callback=lambda attack_type: CombatSystem.damage(self, attack_type), screen_shaker=self.screen_shaker)
-                self.screen_shaker.particles_manager = self.particles_manager
+                self.screen_shaker.particles_manager, self.screen_shaker.hurt_vignette = self.particles_manager, self.hurt_vignette
                 self.combat_ai = SharkoCombatAI(self)
                 self.main_monitor_clipper = MainMonitorClipper(self.window)
+                self.stun_manager = MouseStunManager()
 
                 WindowsUtils.disable_desktop_grid_and_autoarrange_universal()
                 self._start_input_listeners()
@@ -961,7 +970,7 @@ class Sharko(SharkoConstants, IconManager):
                 self.fight_loop()
                 self._toggle_menu_items(["Fight"], False)
             self.cutscene_presets["BeginFightCutscene"][-1]["on_complete"] = _start_fight_mode
-            self._single_shot(self.audio_manager.get_sound_length("theme_vamp") - 100, lambda: self.audio_manager.play("theme_loop"))
+            self._single_shot(self.audio_manager.get_sound_length("theme_vamp") - 100, lambda: self.audio_manager.play("theme_loop", volume=self.sound_volume))
             self.play_cutscene("BeginFightCutscene")
         else:
             self.fight_mode_active = False
@@ -1009,6 +1018,12 @@ class Sharko(SharkoConstants, IconManager):
             if hasattr(self, "warning_manager") and self.warning_manager:
                 self.warning_manager.deinitialize()
                 self.warning_manager = None
+            if hasattr(self, "hurt_vignette") and self.hurt_vignette:
+                self.hurt_vignette.deinitialize()
+                self.hurt_vignette = None
+            if hasattr(self, "stun_manager") and self.stun_manager:
+                self.stun_manager.deinitialize()
+                self.stun_manager = None
             self.idle_state()
             self._toggle_menu_items(["Fight"], True)
 
@@ -1026,7 +1041,9 @@ class Sharko(SharkoConstants, IconManager):
 
     def sounds_logics(self, volume):
         """Updates volume based on the slider value."""
-        self.sound_volume = volume / 100 
+        self.sound_volume = volume / 100
+        self.audio_manager.set_sound_volume("theme_loop", self.sound_volume)
+        self.audio_manager.set_sound_volume("theme_vamp", self.sound_volume)
 
 
 # Initialize and run
