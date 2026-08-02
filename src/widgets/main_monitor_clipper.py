@@ -1,7 +1,7 @@
 """Clipper that isolates a frameless widget window to the main monitor using non-blocking updates."""
-from PyQt5.QtCore import QObject, QEvent, QRect, QPoint
-from PyQt5.QtGui import QRegion
-from PyQt5.QtWidgets import QApplication
+from PyQt6.QtCore import QObject, QEvent, QRect, QPoint
+from PyQt6.QtGui import QRegion
+from PyQt6.QtWidgets import QApplication
 
 
 class MainMonitorClipper(QObject):
@@ -11,8 +11,8 @@ class MainMonitorClipper(QObject):
         self.target = target_widget
         self._is_updating = False
 
-        desktop = QApplication.desktop()
-        self.primary_geo = desktop.screenGeometry(0)
+        desktop = QApplication.primaryScreen()
+        self.primary_geo = desktop.geometry()
 
         self._last_processed_pos = QPoint(-99999, -99999)
 
@@ -28,7 +28,7 @@ class MainMonitorClipper(QObject):
         self.deleteLater()
 
     def eventFilter(self, obj, event):
-        if not self._is_updating and obj == self.target and event.type() in (QEvent.Move, QEvent.Resize, QEvent.Show, QEvent.LayoutRequest):
+        if not self._is_updating and obj == self.target and event.type() in (QEvent.Type.Move, QEvent.Type.Resize, QEvent.Type.Show, QEvent.Type.LayoutRequest):
             self.update_mask()
         return super().eventFilter(obj, event)
 

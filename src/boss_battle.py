@@ -16,9 +16,9 @@ import      win32gui
 
 from ctypes                             import windll
 
-from PyQt5.QtGui                        import QPixmap, QPainter, QTransform
-from PyQt5.QtCore                       import QTimer, Qt, QCoreApplication, QPoint, QRect
-from PyQt5.QtWidgets                    import QWidget
+from PyQt6.QtGui                        import QPixmap, QPainter, QTransform
+from PyQt6.QtCore                       import QTimer, Qt, QCoreApplication, QPoint, QRect
+from PyQt6.QtWidgets                    import QWidget
 
 from img_utils                          import ImgUtils
 from math_utils                         import MathUtils
@@ -480,10 +480,10 @@ class CombatSystem():
                         self._lazer_damagetimer = 0
 
                 canvas = QPixmap(self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
-                canvas.fill(Qt.transparent)
+                canvas.fill(Qt.GlobalColor.transparent)
 
                 painter = QPainter(canvas)
-                painter.setRenderHint(QPainter.SmoothPixmapTransform)
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
 
                 flip = self._lazer_dir == "Left"
 
@@ -938,7 +938,7 @@ class CombatSystem():
             smear_scale *= taskbar_scale_factor
             transform = QTransform()
             transform.scale(smear_scale, smear_scale)
-            self._taskbar_smear_frame_1 = self._taskbar_smear_frame_1.transformed(transform, Qt.SmoothTransformation)
+            self._taskbar_smear_frame_1 = self._taskbar_smear_frame_1.transformed(transform, Qt.TransformationMode.SmoothTransformation)
 
             self._taskbar_smear_frame_2, smear_scale = ImgUtils.draw_blurred_semicircle_window(
                 self.taskbar_pixmap,
@@ -948,7 +948,7 @@ class CombatSystem():
             smear_scale *= taskbar_scale_factor
             transform = QTransform()
             transform.scale(smear_scale, smear_scale)
-            self._taskbar_smear_frame_2 = self._taskbar_smear_frame_2.transformed(transform, Qt.SmoothTransformation)
+            self._taskbar_smear_frame_2 = self._taskbar_smear_frame_2.transformed(transform, Qt.TransformationMode.SmoothTransformation)
 
             self.swings_remaining = num_attacks
             print("Initializing main attack sequence...")

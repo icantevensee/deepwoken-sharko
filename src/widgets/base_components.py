@@ -5,9 +5,9 @@ UI components shared across the Sharko application:
 - VolumeSlider: Slider that can be embedded in menus without closing them.
 - SharkoLabel: The main image label that forwards mouse events to the core logic."""
 
-from PyQt5.QtCore import QEvent, QPoint, QRect, Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QFont, QPainter, QPen
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import QEvent, QPoint, QRect, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QFont, QPainter, QPen
+from PyQt6.QtWidgets import (
     QLabel,
     QProxyStyle,
     QStyle,
@@ -21,10 +21,10 @@ class MenuStyle(QProxyStyle):
     def drawPrimitive(self, element, option, painter, widget=None):
         """Primitive painting for menu and frame elements to use a solid black background."""
         if element in (
-            QStyle.PE_PanelMenu,
-            QStyle.PE_FrameMenu,
-            QStyle.PE_Frame,
-            QStyle.PE_FrameWindow,
+            QStyle.PrimitiveElement.PE_PanelMenu,
+            QStyle.PrimitiveElement.PE_FrameMenu,
+            QStyle.PrimitiveElement.PE_Frame,
+            QStyle.PrimitiveElement.PE_FrameWindow,
         ):
             painter.save()
             painter.fillRect(option.rect, QColor("#000000"))
@@ -35,23 +35,23 @@ class MenuStyle(QProxyStyle):
 
     def drawControl(self, element, option, painter, widget=None):
         """Painted menu items with tinted backgrounds, icons, checkmarks, submenu arrows, and text colors."""
-        if element == QStyle.CE_MenuItem:
+        if element == QStyle.ControlElement.CE_MenuItem:
             if isinstance(option, QStyleOptionMenuItem):
                 painter.save()
 
                 rect = option.rect
 
-                is_enabled = option.state & QStyle.State_Enabled
+                is_enabled = option.state & QStyle.StateFlag.State_Enabled
 
                 if not is_enabled:
                     painter.fillRect(rect, QColor("#0a0a15"))
-                elif option.state & QStyle.State_Selected:
+                elif option.state & QStyle.StateFlag.State_Selected:
                     painter.fillRect(rect, QColor("#0300A4"))
                 else:
                     painter.fillRect(rect, QColor("#02002A"))
 
                 # Separator
-                if option.menuItemType == QStyleOptionMenuItem.Separator:
+                if option.menuItemType == QStyleOptionMenuItem.MenuItemType.Separator:
                     painter.fillRect(rect, QColor("#005C75"))
                     painter.restore()
                     return
@@ -65,10 +65,10 @@ class MenuStyle(QProxyStyle):
                         icon_size,
                         icon_size,
                     )
-                    option.icon.paint(painter, icon_rect, Qt.AlignCenter)
+                    option.icon.paint(painter, icon_rect, Qt.AlignmentFlag.AlignCenter)
 
                 # Checkmark
-                if option.checkType != QStyleOptionMenuItem.NotCheckable:
+                if option.checkType != QStyleOptionMenuItem.CheckType.NotCheckable:
                     check_rect = QRect(
                         rect.right() - 20,
                         rect.top() + (rect.height() - 16) // 2,
@@ -85,7 +85,7 @@ class MenuStyle(QProxyStyle):
                         painter.drawRect(check_rect)
 
                 # Submenu arrow
-                if option.menuItemType == QStyleOptionMenuItem.SubMenu:
+                if option.menuItemType == QStyleOptionMenuItem.MenuItemType.SubMenu:
                     arrow_rect = QRect(
                         rect.right() - 16,
                         rect.top() + (rect.height() - 12) // 2,
@@ -111,7 +111,7 @@ class MenuStyle(QProxyStyle):
                 text_rect.setLeft(rect.left() + option.maxIconWidth + 12)
 
                 painter.drawText(
-                    text_rect, int(Qt.AlignVCenter | Qt.AlignLeft), option.text
+                    text_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), option.text
                 )
 
                 painter.restore()
@@ -151,16 +151,16 @@ class VolumeSlider(QWidget):
     def eventFilter(self, obj, event):
         """Intercept mouse events to implement drag-based slider interaction without closing parent menus."""
         if event.type() in (
-            QEvent.MouseButtonPress,
-            QEvent.MouseButtonRelease,
-            QEvent.MouseMove,
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonRelease,
+            QEvent.Type.MouseMove,
         ):
-            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+            if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
                 self.is_dragging = True
                 self.setValue(self._value_from_pos(event.x()))
-            elif event.type() == QEvent.MouseMove and self.is_dragging:
+            elif event.type() == QEvent.Type.MouseMove and self.is_dragging:
                 self.setValue(self._value_from_pos(event.x()))
-            elif event.type() == QEvent.MouseButtonRelease and event.button() == Qt.LeftButton:
+            elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
                 self.is_dragging = False
             return True
         return super().eventFilter(obj, event)
@@ -177,14 +177,14 @@ class VolumeSlider(QWidget):
     def paintEvent(self, event):
         """Draw the slider’s background, label, track, filled progress, and handle."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         painter.fillRect(self.rect(), QColor("#02002A"))
 
         painter.setPen(QColor("#D5FFFF"))
-        painter.setFont(QFont("Arial", 9, QFont.Normal))
+        painter.setFont(QFont("Arial", 9, QFont.Weight.Normal))
         text_rect = QRect(14, 0, 65, self.height())
-        painter.drawText(text_rect, int(Qt.AlignVCenter | Qt.AlignLeft), "Volume:")
+        painter.drawText(text_rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), "Volume:")
 
         track_left = text_rect.right() + 8
         track_right = self.width() - 16
@@ -221,11 +221,11 @@ class SharkoLabel(QLabel):
         if self.parent_sharko is None:
             return
 
-        if event.button() == Qt.MiddleButton:
-            self.drag_start_x = event.x()
-            self.drag_start_y = event.y()
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.drag_start_x = int(event.position().x())
+            self.drag_start_y = int(event.position().y())
             self.parent_sharko._middle_button_pressed(event)
-        elif event.button() == Qt.LeftButton and hasattr(
+        elif event.button() == Qt.MouseButton.LeftButton and hasattr(
             self.parent_sharko, "_handle_question_click"
         ):
             self.parent_sharko._handle_question_click(event)
@@ -235,17 +235,17 @@ class SharkoLabel(QLabel):
         if self.parent_sharko is None:
             return
 
-        if event.button() == Qt.MiddleButton:
+        if event.button() == Qt.MouseButton.MiddleButton:
             self.parent_sharko._middle_button_released(event)
-        elif event.button() == Qt.RightButton:
-            self.parent_sharko.menu.popup(event.globalPos())
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.parent_sharko.menu.popup(event.globalPosition().toPoint())
 
     def mouseMoveEvent(self, event):
         """Handle mouse movement while middle button is held."""
         if self.parent_sharko is None:
             return
 
-        if event.buttons() == Qt.MiddleButton:
+        if event.buttons() == Qt.MouseButton.MiddleButton:
             self.parent_sharko._middle_button_hold_move(event)
 
     def mouseDoubleClickEvent(self, event):
@@ -253,5 +253,5 @@ class SharkoLabel(QLabel):
         if self.parent_sharko is None:
             return
 
-        if event.button() == Qt.MiddleButton:
-            self.parent_sharko.menu.popup(event.globalPos())
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.parent_sharko.menu.popup(event.globalPosition().toPoint())

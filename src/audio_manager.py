@@ -7,8 +7,8 @@ Lazy loading engine for sfx:
 import                          random
 import                          os
 
-from PyQt5.QtMultimedia import  QMediaPlayer, QMediaContent
-from PyQt5.QtCore import        QObject, QUrl
+from PyQt6.QtMultimedia import  QAudioOutput, QMediaPlayer
+from PyQt6.QtCore import        QObject, QUrl
 
 
 class AudioManager:
@@ -76,7 +76,7 @@ class PitchedSound(QObject):
         self.looped = looped
         self.volume = max(0.0, min(1.0, volume))
         self.media_url = QUrl.fromLocalFile(audio_path)
-        self.active_players = set()
+        self.active_players = []
 
         file_size_bytes = os.path.getsize(audio_path)
         self.sound_length = int((file_size_bytes * 8 / 320000) * 1000)
@@ -87,48 +87,53 @@ class PitchedSound(QObject):
         if self.volume == 0:
             return
 
-        player = QMediaPlayer(None, QMediaPlayer.LowLatency)
+        # QMediaPlayer in PyQt6 uses a separate QAudioOutput for volume control.
+        player = QMediaPlayer(None)
+        audio_output = QAudioOutput()
+        audio_output.setVolume(self.volume)
+        player.setAudioOutput(audio_output)
 
+        player.setSource(self.media_url)
         if self.looped:
-            from PyQt5.QtMultimedia import QMediaPlaylist
-            playlist = QMediaPlaylist(player)
-            playlist.addMedia(QMediaContent(self.media_url))
-            playlist.setPlaybackMode(QMediaPlaylist.Loop)
-            player.setPlaylist(playlist)
-        else:
-            player.setMedia(QMediaContent(self.media_url))
-
-        player.setVolume(int(self.volume * 100))
+            player.setLoops(QMediaPlayer.Loops.Infinite)
 
         if self.pitched:
             player.setPlaybackRate(random.uniform(0.95, 1.05))
         else:
             player.setPlaybackRate(1.0)
 
-        player.stateChanged.connect(self._handle_state_change)
-        self.active_players.add(player)
+        player.playbackStateChanged.connect(self._handle_state_change)
+        self.active_players.append((player, audio_output))
         player.play()
 
     def set_volume(self, volume):
         """Sets the volume of all of that sound."""
         self.volume = max(0.0, min(1.0, volume))
-        qt_volume = int(self.volume * 100)
-        for player in self.active_players:
-            player.setVolume(qt_volume)
+        qt_volume = self.volume
+        for player, audio_output in self.active_players:
+            if audio_output is not None:
+                audio_output.setVolume(qt_volume)
 
     def stop(self):
         """Instantly terminates all overlapping streams and clears RAM."""
-        for player in list(self.active_players):
+        for player, audio_output in list(self.active_players):
             player.stop()
             player.deleteLater()
+            if audio_output is not None:
+                audio_output.deleteLater()
         self.active_players.clear()
 
     def _handle_state_change(self, state):
         """Safe extraction tracking that deletes C++ objects natively."""
         player = self.sender()
-        if state == QMediaPlayer.StoppedState and player in self.active_players:
-            self.active_players.remove(player)
-            player.deleteLater()
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+            for pair in list(self.active_players):
+                if pair[0] is player:
+                    self.active_players.remove(pair)
+                    player.deleteLater()
+                    if pair[1] is not None:
+                        pair[1].deleteLater()
+                    break
 
     def is_playing(self):
         """True if active players."""

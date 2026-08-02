@@ -1,9 +1,9 @@
 import time
 from ctypes import windll, c_void_p, c_uint32, c_bool
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QPainter, QRadialGradient, QColor, QPixmap
-from PyQt5.QtWidgets import QWidget
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtGui import QPainter, QRadialGradient, QColor, QPixmap
+from PyQt6.QtWidgets import QWidget
 
 from constants import SharkoConstants
 
@@ -65,24 +65,24 @@ class HurtVignetteOverlay(QWidget):
         self.height = user32.GetSystemMetrics(1)
 
         self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.WindowTransparentForInput
-            | Qt.WindowStaysOnTopHint
-            | Qt.Tool
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowTransparentForInput
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setGeometry(0, 0, self.width, self.height - 1)
         user32.SetWindowDisplayAffinity(int(self.winId()), SharkoConstants.WDA_EXCLUDEFROMCAPTURE)
 
         self._base_vignette_mask = QPixmap(self.buffer_width, self.buffer_height)
-        self._base_vignette_mask.fill(Qt.transparent)
+        self._base_vignette_mask.fill(Qt.GlobalColor.transparent)
 
         mask_painter = QPainter(self._base_vignette_mask)
-        mask_painter.setRenderHint(QPainter.Antialiasing, True)
+        mask_painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
         center = self._base_vignette_mask.rect().center()
         radius = max(self.buffer_width, self.buffer_height) / 1.2
-        gradient = QRadialGradient(center, radius)
+        gradient = QRadialGradient(float(center.x()), float(center.y()), float(radius))
 
         gradient.setColorAt(0.0, QColor(0, 0, 0, 0))
         gradient.setColorAt(0.6, QColor(139, 0, 0, int(255 * 0.3)))
@@ -91,7 +91,7 @@ class HurtVignetteOverlay(QWidget):
         mask_painter.fillRect(self._base_vignette_mask.rect(), gradient)
         mask_painter.end()
 
-        self._flash_signal.connect(self._handle_flash_hurt, Qt.QueuedConnection)
+        self._flash_signal.connect(self._handle_flash_hurt, Qt.ConnectionType.QueuedConnection)
 
         self.loop_timer = QTimer(self)
         self.loop_timer.timeout.connect(self.update_intensity_loop)
@@ -137,7 +137,7 @@ class HurtVignetteOverlay(QWidget):
         if self._intensity <= 0.0 or self._base_vignette_mask is None:
             return
         widget_painter = QPainter(self)
-        widget_painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        widget_painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
         widget_painter.setOpacity(self._intensity)
         widget_painter.drawPixmap(self.rect(), self._base_vignette_mask)
         widget_painter.end()

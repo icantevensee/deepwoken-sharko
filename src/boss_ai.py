@@ -6,7 +6,7 @@ Main fight loop functionality and descision making.
 
 import                                         random
 
-from PyQt5.QtCore                       import QTimer
+from PyQt6.QtCore                       import QTimer
 
 import                                         win32api
 import                                         win32gui

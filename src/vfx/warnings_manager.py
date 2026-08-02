@@ -5,15 +5,15 @@ Overlay and engine for drawing animated red warning stripes used to telegraph in
 - MultiWarningOverlay manages the collection of warning instances."""
 
 import win32api
-from PyQt5.QtCore import (
+from PyQt6.QtCore import (
     QEasingCurve,
     QRect,
     Qt,
     QTimer,
     QVariantAnimation,
 )
-from PyQt5.QtGui import QColor, QPainter, QPen
-from PyQt5.QtWidgets import QWidget
+from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtWidgets import QWidget
 
 
 class WarningInstance:
@@ -32,7 +32,7 @@ class WarningInstance:
         self.anim.setDuration(300)
         self.anim.setStartValue(0)
         self.anim.setEndValue(180)
-        self.anim.setEasingCurve(QEasingCurve.InOutSine)
+        self.anim.setEasingCurve(QEasingCurve.Type.InOutSine)
 
         self.anim.valueChanged.connect(self.update_val)
         self.update_callback = parent_update_func
@@ -52,13 +52,13 @@ class WarningInstance:
 
     def loop_logic(self):
         """Control the looping behavior of the warning opacity animation and handle fade-out completion."""
-        if self.is_fading_out and self.anim.direction() == QVariantAnimation.Backward:
+        if self.is_fading_out and self.anim.direction() == QVariantAnimation.Direction.Backward:
             self.opacity = -1
             if self.on_complete:
                 self.on_complete()
             return
 
-        new_dir = QVariantAnimation.Backward if self.anim.direction() == QVariantAnimation.Forward else QVariantAnimation.Forward
+        new_dir = QVariantAnimation.Direction.Backward if self.anim.direction() == QVariantAnimation.Direction.Forward else QVariantAnimation.Direction.Forward
         self.anim.setDirection(new_dir)
         self.anim.start()
 
@@ -100,12 +100,12 @@ class MultiWarningOverlay(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.WindowStaysOnTopHint
-            | Qt.WindowTransparentForInput
-            | Qt.Tool
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowTransparentForInput
+            | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setGeometry(0, 0, win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1) - 1)
         self.show()
 
@@ -122,8 +122,8 @@ class MultiWarningOverlay(QWidget):
         """Draw all active warning stripes and borders onto the overlay."""
         # Maintain z-order on top of Sharko window
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setCompositionMode(QPainter.CompositionMode_Source)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
 
         for i in range(len(self.active_warnings) - 1, -1, -1):
             w_inst = self.active_warnings[i]
@@ -139,13 +139,13 @@ class MultiWarningOverlay(QWidget):
             # Draw Stripes
             painter.save()
             painter.setClipRect(rect)
-            painter.setPen(QPen(color, 5, Qt.SolidLine, Qt.FlatCap))
+            painter.setPen(QPen(color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
             for j in range(-h, w + h, 25):
                 painter.drawLine(x + j, y, x + j + h, y + h)
             painter.restore()
 
             # Draw Border
-            painter.setPen(QPen(color, 4, Qt.SolidLine, Qt.FlatCap, Qt.MiterJoin))
+            painter.setPen(QPen(color, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap, Qt.PenJoinStyle.MiterJoin))
             painter.drawRect(rect)
 
     def deinitialize(self):

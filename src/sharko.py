@@ -22,9 +22,9 @@ import      sys
 from pynput                             import keyboard, mouse
 import keyboard as                             blocker_keyboard
 
-from PyQt5.QtWidgets                    import QApplication, QWidget, QVBoxLayout, QMenu, QWidgetAction
-from PyQt5.QtGui                        import QPixmap, QPainter, QTransform, QFontDatabase
-from PyQt5.QtCore                       import Qt, QTimer, QObject, pyqtSignal
+from PyQt6.QtWidgets                    import QApplication, QWidget, QVBoxLayout, QMenu, QWidgetAction
+from PyQt6.QtGui                        import QPixmap, QPainter, QTransform, QFontDatabase
+from PyQt6.QtCore                       import Qt, QTimer, QObject, pyqtSignal
 
 from widgets.bar_guis                   import ScalableCombatBars
 from vfx.vfx_manager                    import VFXManager
@@ -52,6 +52,9 @@ from img_utils                          import ImgUtils
 
 import                                          psutil
 
+os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
+os.environ["QT_LOGGING_RULES"] = "qt.multimedia.ffmpeg*=false"
+os.environ["AV_LOG_LEVEL"] = "quiet"
 
 # Enable dpi scaling
 try:
@@ -95,11 +98,11 @@ class Sharko(SharkoConstants, IconManager):
         self.app.setStyle(MenuStyle())
         self.window = QWidget()
         self.window.setWindowFlags(
-            Qt.FramelessWindowHint |
-            Qt.WindowStaysOnTopHint |
-            Qt.Tool
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
         )
-        self.window.setAttribute(Qt.WA_TranslucentBackground)
+        self.window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         # FONT CONFIGURATIONS
         SPEECH_FONT_ID          = QFontDatabase.addApplicationFont(self.SPEECH_FONT)
@@ -238,14 +241,14 @@ class Sharko(SharkoConstants, IconManager):
 
         # INPUT SIGNAL EMITTER (for thread-safe communication from pynput listeners)
         self.input_emitter = InputSignalEmitter()
-        self.input_emitter.f_pressed.connect(self._on_f_pressed_safe, Qt.QueuedConnection)
-        self.input_emitter.f_released.connect(self._on_f_released_safe, Qt.QueuedConnection)
-        self.input_emitter.action_triggered.connect(self._on_action_safe, Qt.QueuedConnection)
-        self.input_emitter.damage_signal.connect(lambda attack_type: CombatSystem.damage(self, attack_type), Qt.QueuedConnection)
+        self.input_emitter.f_pressed.connect(self._on_f_pressed_safe, Qt.ConnectionType.QueuedConnection)
+        self.input_emitter.f_released.connect(self._on_f_released_safe, Qt.ConnectionType.QueuedConnection)
+        self.input_emitter.action_triggered.connect(self._on_action_safe, Qt.ConnectionType.QueuedConnection)
+        self.input_emitter.damage_signal.connect(lambda attack_type: CombatSystem.damage(self, attack_type), Qt.ConnectionType.QueuedConnection)
 
         self.keyboard_listener = None
         self.mouse_listener = None
-        sys.exit(self.app.exec_())
+        sys.exit(self.app.exec())
 
     def log_stats(self):
         """Log current memory usage statistics."""
@@ -565,7 +568,7 @@ class Sharko(SharkoConstants, IconManager):
         """Moves the main character window while the middle mouse button is held down and moved."""
         if self.fight_mode_active or self.cutscene_active:
             return
-        cursor_pos = event.globalPos()
+        cursor_pos = event.globalPosition().toPoint()
         x = cursor_pos.x() - self.x
         y = cursor_pos.y() - self.y
         self.window.setGeometry(x, y, self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
@@ -575,8 +578,8 @@ class Sharko(SharkoConstants, IconManager):
         if not getattr(self, "question_active", False):
             return
         x_off = self.TEXT_OFFSET_LEFT if self.current_facing == "Left" else self.TEXT_OFFSET_RIGHT
-        x = event.pos().x()
-        y = event.pos().y()
+        x = int(event.position().x())
+        y = int(event.position().y())
         answer_text = None
         if x_off <= x <= x_off + self.QUESTION_BOX_WIDTH and self.QUESTION_BOX_OPTION1_Y <= y <= self.QUESTION_BOX_OPTION1_Y + self.QUESTION_BOX_OPTION_HEIGHT:
             answer_text = self._question_answers[0] if self._question_answers else None
@@ -873,11 +876,11 @@ class Sharko(SharkoConstants, IconManager):
         class DeathAnimationWidget(QWidget):
 
             def __init__(self, src_path):
-                super().__init__(None, Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint)
-                self.setAttribute(Qt.WA_TranslucentBackground)
-                self.setWindowFlag(Qt.WindowStaysOnTopHint)
-                self.setWindowFlag(Qt.Tool)
-                self.setWindowFlag(Qt.FramelessWindowHint)
+                super().__init__(None, Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
+                self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+                self.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint)
+                self.setWindowFlag(Qt.WindowType.Tool)
+                self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
                 self.tiles = []
                 self.particles_manager = []
                 self.firstime = True
@@ -914,7 +917,7 @@ class Sharko(SharkoConstants, IconManager):
 
             def paintEvent(self, event):
                 painter = QPainter(self)
-                painter.setRenderHint(QPainter.SmoothPixmapTransform)
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
                 for tile in self.tiles:
                     painter.save()
                     painter.setOpacity(tile.alpha / 255)

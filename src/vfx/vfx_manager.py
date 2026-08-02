@@ -12,14 +12,14 @@ import sys
 from ctypes import c_bool, c_uint32, c_void_p, windll
 
 import win32api
-from PyQt5.QtCore import (
+from PyQt6.QtCore import (
     QPointF,
     QRectF,
     Qt,
     QTimer,
 )
-from PyQt5.QtGui import QColor, QPainter, QPen, QPixmap
-from PyQt5.QtWidgets import QWidget
+from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap
+from PyQt6.QtWidgets import QWidget
 
 from constants import SharkoConstants
 
@@ -259,12 +259,12 @@ class VFXManager(QWidget):
         self.screen_shaker = screen_shaker
 
         self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.WindowStaysOnTopHint
-            | Qt.WindowTransparentForInput
-            | Qt.Tool
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowTransparentForInput
+            | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.particles = []
         self.lasers = {}
         self.textures = {}
@@ -283,7 +283,6 @@ class VFXManager(QWidget):
         self.raise_()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_vfx)
-        self.timer.start(16)
 
     def _load_assets(self):
         """Load particle texture pixmaps from disk and apply a tint for ring and spark assets."""
@@ -307,10 +306,10 @@ class VFXManager(QWidget):
             if os.path.exists(full_path):
                 img = QPixmap(full_path)
                 tinted = QPixmap(img.size())
-                tinted.fill(Qt.transparent)
+                tinted.fill(Qt.GlobalColor.transparent)
                 p = QPainter(tinted)
                 p.drawPixmap(0, 0, img)
-                p.setCompositionMode(QPainter.CompositionMode_SourceAtop)
+                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
                 if key.startswith("ring") or key.startswith("spark"):
                     p.fillRect(tinted.rect(), QColor(255, 220, 0))
                 if key.startswith("ardour"):
@@ -321,6 +320,8 @@ class VFXManager(QWidget):
     def set_laser(self, laser_id, x, y, angle, color=QColor(0, 150, 255), offset=0):
         """Create or update a laser instance with given origin, angle, color, and offset."""
         if laser_id not in self.lasers:
+            if self.timer and not self.timer.isActive():
+                self.timer.start(16)
             self.lasers[laser_id] = Laser(x, y, angle, color, start_offset=offset)
         else:
             lazer = self.lasers[laser_id]
@@ -335,22 +336,29 @@ class VFXManager(QWidget):
 
     def play_star_pop(self, x, y, count=1):
         if "star1" in self.textures:
+            if self.timer and not self.timer.isActive():
+                self.timer.start(16)
             for _ in range(count):
                 self.particles.append(Particle(x, y, "star", self.textures["star1"]))
 
     def play_unparryable_indicator(self, x, y):
         if "unparryable_outline" in self.textures and "unparryable_glyph" in self.textures:
+            if self.timer and not self.timer.isActive():
+                self.timer.start(16)
             self.particles.append(Particle(x, y, "unparryable_outline", self.textures["unparryable_outline"]))
             self.particles.append(Particle(x, y, "unparryable_glyph", self.textures["unparryable_glyph"]))
 
     def play_unblockable_indicator(self, x, y):
         if "unblockable_outline" in self.textures and "unblockable_glyph" in self.textures:
-            self.particles.append(
-                Particle(x, y, "unblockable_outline", self.textures["unblockable_outline"]))
+            if self.timer and not self.timer.isActive():
+                self.timer.start(16)
+            self.particles.append(Particle(x, y, "unblockable_outline", self.textures["unblockable_outline"]))
             self.particles.append(Particle(x, y, "unblockable_glyph", self.textures["unblockable_glyph"]))
 
     def play_parry(self, x, y):
         available_sparkles = [k for k in ["sparkle1", "sparkle2", "sparkle3"] if k in self.textures]
+        if self.timer and not self.timer.isActive():
+            self.timer.start(16)
         if len(available_sparkles) >= 2:
             for s_key in random.sample(available_sparkles, 2):
                 self.particles.append(Particle(x, y, "sparkle", self.textures[s_key]))
@@ -358,18 +366,26 @@ class VFXManager(QWidget):
             self.particles.append(Particle(x, y, "ring", self.textures[random.choice(["ring", "ringportion"])]))
 
     def play_block(self, x, y):
+        if self.timer and not self.timer.isActive():
+            self.timer.start(16)
         for _ in range(7):
             self.particles.append(Particle(x, y, "block"))
 
     def play_blood(self, x, y, amount=7):
+        if self.timer and not self.timer.isActive():
+            self.timer.start(16)
         for _ in range(amount):
             self.particles.append(Particle(x, y, "blood"))
 
     def play_sharko_blood(self, x, y):
+        if self.timer and not self.timer.isActive():
+            self.timer.start(16)
         for _ in range(7):
             self.particles.append(Particle(x, y, "blood_sharko"))
 
     def play_falling_sharko(self, x, y, scale, vel, sharko_width=696, sharko_height=772):
+        if self.timer and not self.timer.isActive():
+            self.timer.start(16)
         particle = Particle(x, y, "falling_sharko", self.textures["falling_sharko"])
         particle.scale = scale
         particle.vel = QPointF(0, vel)
@@ -379,6 +395,8 @@ class VFXManager(QWidget):
         self.particles.append(particle)
 
     def play_ardour(self, x, y):
+        if self.timer and not self.timer.isActive():
+            self.timer.start(16)
         self.particles.append(Particle(x, y, "ardour", self.textures["ardour"]))
 
     def update_vfx(self):
@@ -423,6 +441,9 @@ class VFXManager(QWidget):
         for lid in to_remove:
             del self.lasers[lid]
         # Maintain z-order on top of Sharko window
+        if not self.particles and not self.lasers and self.timer and self.timer.isActive():
+            self.timer.stop()
+            return
         self.raise_()
         self.update()  # call paint event
 
@@ -446,8 +467,8 @@ class VFXManager(QWidget):
     def paintEvent(self, event):
         """Render all lasers and particles onto the vfx overlay using additive blending."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setCompositionMode(QPainter.CompositionMode_Plus)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Plus)
 
         for laser in self.lasers.values():
             painter.save()
@@ -458,11 +479,11 @@ class VFXManager(QWidget):
 
             glow_c = QColor(laser.color)
             glow_c.setAlpha(110)
-            painter.setPen(QPen(glow_c, laser.thickness + 15 + laser.flicker, Qt.SolidLine, Qt.RoundCap))
+            painter.setPen(QPen(glow_c, laser.thickness + 15 + laser.flicker, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(start_p, end_p)
-            painter.setPen(QPen(QColor(0, 210, 255), laser.thickness + laser.flicker, Qt.SolidLine, Qt.RoundCap))
+            painter.setPen(QPen(QColor(0, 210, 255), laser.thickness + laser.flicker, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(start_p, end_p)
-            painter.setPen(QPen(QColor(240, 250, 255), laser.thickness * 0.3, Qt.SolidLine, Qt.RoundCap))
+            painter.setPen(QPen(QColor(240, 250, 255), laser.thickness * 0.3, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             painter.drawLine(start_p, end_p)
             painter.restore()
         offset_x, offset_y = self.screen_shaker.offset_x, self.screen_shaker.offset_y
@@ -478,7 +499,7 @@ class VFXManager(QWidget):
     def draw_primitive_rect(self, p, painter):
         color = self.PARTICLE_COLOR_MAP[p.p_type]
         painter.setBrush(color)
-        painter.setPen(Qt.NoPen)
+        painter.setPen(Qt.PenStyle.NoPen)
         s = p.size
         half_s = s / 2
         painter.drawRect(QRectF(-half_s, -half_s, s, s))

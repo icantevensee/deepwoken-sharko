@@ -10,9 +10,9 @@ import time
 
 import ctypes
 
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor, QCursor, QFont, QPainter
-from PyQt5.QtWidgets import QWidget
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QColor, QCursor, QFont, QPainter
+from PyQt6.QtWidgets import QWidget
 
 
 class SwordWindow(QWidget):
@@ -24,8 +24,8 @@ class SwordWindow(QWidget):
         """Initialize ascii sword window with combat, animation, and follow-mode state."""
         super().__init__()
         self.damage_callback = damage_callback
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Tool | Qt.WindowType.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         self.sword = [
             '   .',
@@ -92,7 +92,7 @@ class SwordWindow(QWidget):
         self.is_appearing = True
         self.appear_progress = 0.0
         self.setGeometry(0, 0, ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1))
-        self.timer.start(16)
+        self.timer.start(30)
 
     def set_follow_mode(self, mode="mouse", window=None):
         """Change the follow mode between tracking a window or the mouse."""
@@ -129,7 +129,7 @@ class SwordWindow(QWidget):
     def engine_loop(self):
         """Main update loop that handles states: following behavior, attack animations, and idle bobbing."""
         if self.is_appearing:
-            self.appear_progress += (16 / 1000.0) / self.appear_duration
+            self.appear_progress += (30 / 1000.0) / self.appear_duration
             if self.appear_progress >= 1.0:
                 self.appear_progress = 1.0
                 self.is_appearing = False
@@ -233,8 +233,8 @@ class SwordWindow(QWidget):
     def paintEvent(self, event):
         """Draw the sword based on states."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setFont(QFont("Consolas", 26, QFont.Bold))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setFont(QFont("Consolas", 26, QFont.Weight.Bold))
 
         painter.save()
         painter.translate(self.x, self.y)

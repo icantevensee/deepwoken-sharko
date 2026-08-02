@@ -10,7 +10,7 @@ import math
 import time
 from ctypes import windll
 
-from PyQt5.QtCore import (
+from PyQt6.QtCore import (
     QEasingCurve,
     QPoint,
     QPropertyAnimation,
@@ -19,7 +19,7 @@ from PyQt5.QtCore import (
     QTimer,
     pyqtProperty,
 )
-from PyQt5.QtGui import (
+from PyQt6.QtGui import (
     QColor,
     QFont,
     QPainter,
@@ -27,7 +27,7 @@ from PyQt5.QtGui import (
     QPen,
     QPixmap,
 )
-from PyQt5.QtWidgets import QWidget
+from PyQt6.QtWidgets import QWidget
 
 from constants import SharkoConstants
 from img_utils import ImgUtils
@@ -43,13 +43,13 @@ class ScalableCombatBars(QWidget):
         super().__init__(parent)
 
         self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.WindowStaysOnTopHint
-            | Qt.WindowTransparentForInput
-            | Qt.Tool
-            | Qt.WindowDoesNotAcceptFocus
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowTransparentForInput
+            | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
         screen_w = windll.user32.GetSystemMetrics(0)
         screen_h = windll.user32.GetSystemMetrics(1) - 1
@@ -98,7 +98,7 @@ class ScalableCombatBars(QWidget):
 
         self._bb_pos_animation = QPropertyAnimation(self, b"boss_bar_anim_pos")
         self._bb_pos_animation.setDuration(600)
-        self._bb_pos_animation.setEasingCurve(QEasingCurve.OutCubic)
+        self._bb_pos_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         self.custom_font = QFont(target_obj.BOSS_FONT_FAMILY, 22)
         self.show()
 
@@ -170,7 +170,7 @@ class ScalableCombatBars(QWidget):
     def paintEvent(self, event):
         """Call functions to render all 3 bars."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         self._paint_boss_bar(painter)
         self._paint_posture_bar(painter)
@@ -237,7 +237,7 @@ class ScalableCombatBars(QWidget):
         path.addText(text_x, text_y, self.custom_font, boss_name)
 
         # Text Outline
-        pen = QPen(QColor(0, 0, 0), 4, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+        pen = QPen(QColor(0, 0, 0), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
         painter.strokePath(path, pen)
         painter.fillPath(path, QColor(255, 255, 255))
 

@@ -13,9 +13,9 @@ import                          win32ui
 import                          winsound
 from winrt.windows.ui.notifications import ToastNotificationManager
 
-from PyQt5.QtCore       import Qt, QTimer, QObject, pyqtSignal
-from PyQt5.QtGui        import QImage, QPixmap, QPainter
-from PyQt5.QtWidgets    import QLabel
+from PyQt6.QtCore       import Qt, QTimer, QObject, pyqtSignal
+from PyQt6.QtGui        import QImage, QPixmap, QPainter
+from PyQt6.QtWidgets    import QLabel
 
 import uiautomation         as auto
 from win11toast         import toast
@@ -80,7 +80,7 @@ class ToastManager:
                 bmpstr,
                 bmpinfo['bmWidth'],
                 bmpinfo['bmHeight'],
-                QImage.Format_ARGB32
+                QImage.Format.Format_ARGB32
             ).copy()
 
             # CLEANUP PATH A: Delete memory DCs first, then release window DC
@@ -117,7 +117,7 @@ class ToastManager:
                 bmpstr,
                 bmpinfo['bmWidth'],
                 bmpinfo['bmHeight'],
-                QImage.Format_ARGB32
+                QImage.Format.Format_ARGB32
             ).copy()
 
             # CLEANUP PATH B: Delete memory DCs first, then release desktop DC
@@ -210,14 +210,14 @@ class ToastManager:
 
             transparent_q = ImgUtils._remove_black_background_qimg(cropped_img2)
 
-            final_masked_img = QImage(w_final, h_final, QImage.Format_ARGB32_Premultiplied)
-            final_masked_img.fill(Qt.transparent)
+            final_masked_img = QImage(w_final, h_final, QImage.Format.Format_ARGB32_Premultiplied)
+            final_masked_img.fill(Qt.GlobalColor.transparent)
 
             painter = QPainter(final_masked_img)
 
             painter.drawImage(0, 0, cropped_img)
 
-            painter.setCompositionMode(QPainter.CompositionMode_DestinationIn)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
             painter.drawImage(0, 0, transparent_q)
 
             painter.end()
@@ -235,8 +235,8 @@ class ToastManager:
         pixmap = QPixmap.fromImage(q_img)
 
         toast_window = QLabel()
-        toast_window.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.SubWindow)
-        toast_window.setAttribute(Qt.WA_TranslucentBackground)
+        toast_window.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.SubWindow)
+        toast_window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         toast_window.setPixmap(pixmap)
         toast_window.setGeometry(x, y, w, h)
         toast_window.show()

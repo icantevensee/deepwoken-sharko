@@ -10,9 +10,9 @@ Non interactive fake command prompt window that plays back predefined command/re
 import os
 import sys
 
-from PyQt5.QtCore import QFileInfo, Qt, QTimer, QSize
-from PyQt5.QtGui import QColor, QFont, QPainter, QPalette, QPen, QTextCursor
-from PyQt5.QtWidgets import (
+from PyQt6.QtCore import QFileInfo, Qt, QTimer, QSize
+from PyQt6.QtGui import QColor, QFont, QPainter, QPalette, QPen, QTextCursor
+from PyQt6.QtWidgets import (
     QFileIconProvider,
     QHBoxLayout,
     QLabel,
@@ -34,7 +34,7 @@ class NativeWindowButton(QWidget):
     def paintEvent(self, event):
         """Draw the minimize, maximize, or close icon."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing, False)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
 
         pen_width = max(1, int(1 * self.scale_factor))
         pen = QPen(QColor(204, 204, 204), pen_width)
@@ -49,7 +49,7 @@ class NativeWindowButton(QWidget):
         elif self.button_type == "max":
             painter.drawRect(cx - size, cy - size, size * 2, size * 2)
         elif self.button_type == "close":
-            painter.setRenderHint(QPainter.Antialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             pen_close = QPen(QColor(204, 204, 204), max(1.2, 1.2 * self.scale_factor))
             painter.setPen(pen_close)
             painter.drawLine(cx - size, cy - size, cx + size, cy + size)
@@ -80,10 +80,10 @@ class FakeCommandPrompt(QMainWindow):
 
         # Enforce stealth window properties
         self.setWindowFlags(
-            Qt.Tool
-            | Qt.FramelessWindowHint
-            | Qt.WindowTransparentForInput
-            | Qt.WindowStaysOnTopHint
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowTransparentForInput
+            | Qt.WindowType.WindowStaysOnTopHint
         )
 
         central_widget = QWidget(self)
@@ -128,7 +128,7 @@ class FakeCommandPrompt(QMainWindow):
 
         self.text_area = QTextEdit(central_widget)
         self.text_area.setStyleSheet("background-color: #000000; border-left: 1px solid #5A5A5A; border-right: 1px solid #5A5A5A; border-bottom: 1px solid #5A5A5A;")
-        self.text_area.setTextInteractionFlags(Qt.NoTextInteraction)
+        self.text_area.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
         palette = QPalette()
         palette.setColor(QPalette.Base, QColor(0, 0, 0))

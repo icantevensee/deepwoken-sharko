@@ -21,7 +21,7 @@ from boss_battle                        import CombatSystem
 from constants                          import SharkoConstants
 from windows_interactive.windows_utils  import WindowsUtils
 
-from PyQt5.QtCore import QTimer
+from PyQt6.QtCore import QTimer
 
 throw_lock = threading.Lock()
 

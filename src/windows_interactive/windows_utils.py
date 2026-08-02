@@ -354,7 +354,7 @@ class WindowsUtils:
         name_str = f"{base_name}" if counter == 1 else f"{base_name} ({counter - 1})"
         start_time = time.time()
 
-        while time.time() - start_time < 200:
+        while time.time() - start_time < 8:
             idx = WindowsUtils.get_actual_index(hwnd_lv, name_str)
             if idx != -1:
                 confirmed_text = WindowsUtils.get_item_text(hwnd_lv, idx)

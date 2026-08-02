@@ -3,8 +3,8 @@ Utilities for image manipulation, including text rendering and format conversion
 """
 import numpy as np
 
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QFont, QFontMetricsF, QTransform
-from PyQt5.QtCore import Qt
+from PyQt6.QtGui import QImage, QPixmap, QPainter, QFont, QFontMetricsF, QTransform
+from PyQt6.QtCore import Qt
 
 
 class ImgUtils:
@@ -13,15 +13,15 @@ class ImgUtils:
         """Render long multiline text into an RGBA QImage with precise layout fitting and zero RAM leakage."""
 
         width, height = size
-        img = QImage(width, height, QImage.Format_ARGB32)
-        img.fill(Qt.transparent)
+        img = QImage(width, height, QImage.Format.Format_ARGB32)
+        img.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter()
         if not painter.begin(img):
             return img
 
         try:
-            painter.setRenderHint(QPainter.TextAntialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
 
             font = QFont(self.SPEECH_FONT_FAMILY)
             padding = self.TEXT_RENDER_PADDING
@@ -42,7 +42,7 @@ class ImgUtils:
                 font.setPointSizeF(mid)
 
                 metrics = QFontMetricsF(font)
-                get_width = getattr(metrics, "horizontalAdvance", metrics.width)
+                get_width = getattr(metrics, "horizontalAdvance", metrics.horizontalAdvance)
 
                 lines = []
                 cur = ""
@@ -92,7 +92,7 @@ class ImgUtils:
     def composite_on_base(self, base_pixmap, text_image):
         """Composite a text QImage onto a base QPixmap at the speech box position."""
         result = QPixmap(base_pixmap.size())
-        result.fill(Qt.transparent)
+        result.fill(Qt.GlobalColor.transparent)
 
         painter = QPainter(result)
         painter.drawPixmap(0, 0, base_pixmap)
@@ -110,7 +110,7 @@ class ImgUtils:
     def composite_three(self, base_pixmap, q_img, opt1_img, opt2_img):
         """Composites three Qimages onto a base pixmap for question and answers."""
         result = QPixmap(base_pixmap.size())
-        result.fill(Qt.transparent)
+        result.fill(Qt.GlobalColor.transparent)
         painter = QPainter(result)
         painter.drawPixmap(0, 0, base_pixmap)
         x = self.TEXT_OFFSET_LEFT if self.current_facing == "Left" else self.TEXT_OFFSET_RIGHT
@@ -134,7 +134,7 @@ class ImgUtils:
     @staticmethod
     def _remove_black_background_qimg(qimg):
         """Remove near black background pixels from a qimage by manipulating its argb data as a numpy array."""
-        qimg = qimg.convertToFormat(QImage.Format_ARGB32)
+        qimg = qimg.convertToFormat(QImage.Format.Format_ARGB32)
         h, w = qimg.height(), qimg.width()
 
         ptr = qimg.bits()
@@ -177,7 +177,7 @@ class ImgUtils:
         """Render a blurred semicircle window from a source pixmap, returns: tuple[QPixmap, float]: result and downscale factor"""
         temp_img = input_pixmap.transformed(QTransform().rotate(90)).toImage()
 
-        temp_img = temp_img.convertToFormat(QImage.Format_RGBA8888)
+        temp_img = temp_img.convertToFormat(QImage.Format.Format_RGBA8888)
 
         width, height = temp_img.width(), temp_img.height()
         ptr = temp_img.bits()
@@ -302,7 +302,7 @@ class ImgUtils:
         height, width, channel = img_rgba.shape
         bytes_per_line = channel * width
 
-        q_image = QImage(img_rgba.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
+        q_image = QImage(img_rgba.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888)
 
         return QPixmap.fromImage(q_image), smear_scale
 
@@ -310,7 +310,7 @@ class ImgUtils:
     def draw_solid_semicircle_window(input_pixmap, inner_radius, swing_angle):
         """Render a solid semicircle window from a source pixmap, returns: tuple[QPixmap, float]: result and downscale factor"""
         temp_img = input_pixmap.transformed(QTransform().rotate(90)).toImage()
-        temp_img = temp_img.convertToFormat(QImage.Format_RGBA8888)
+        temp_img = temp_img.convertToFormat(QImage.Format.Format_RGBA8888)
         width, height = temp_img.width(), temp_img.height()
         ptr = temp_img.bits()
         ptr.setsize(height * width * 4)
@@ -390,5 +390,5 @@ class ImgUtils:
         height, width, channel = img_rgba.shape
         bytes_per_line = channel * width
 
-        q_image = QImage(img_rgba.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
+        q_image = QImage(img_rgba.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888)
         return QPixmap.fromImage(q_image), scale

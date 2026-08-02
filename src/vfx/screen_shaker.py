@@ -9,9 +9,9 @@ import random
 import time
 from ctypes import c_bool, c_uint32, c_void_p, windll
 
-from PyQt5.QtCore import Qt, QTimer, QCoreApplication, QRect
-from PyQt5.QtGui import QImage, QPainter
-from PyQt5.QtWidgets import QWidget
+from PyQt6.QtCore import Qt, QTimer, QCoreApplication, QRect
+from PyQt6.QtGui import QImage, QPainter
+from PyQt6.QtWidgets import QWidget
 
 from constants import SharkoConstants
 
@@ -32,12 +32,12 @@ class ScreenShaker(QWidget):
         self.height = user32.GetSystemMetrics(1)
 
         self.setWindowFlags(
-            Qt.FramelessWindowHint
-            | Qt.WindowTransparentForInput
-            | Qt.WindowStaysOnTopHint
-            | Qt.Tool
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowTransparentForInput
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setGeometry(0, 0, self.width, self.height - 1)
         user32.SetWindowDisplayAffinity(int(self.winId()), SharkoConstants.WDA_EXCLUDEFROMCAPTURE)
         self.captured_image = None
@@ -86,7 +86,7 @@ class ScreenShaker(QWidget):
                 width,
                 height,
                 bytes_per_line,
-                QImage.Format_ARGB32
+                QImage.Format.Format_ARGB32
             )
 
         progress = elapsed / self.duration
@@ -134,15 +134,15 @@ class ScreenShaker(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         if not self.captured_image:
-            painter.fillRect(0, 0, self.width, self.height, Qt.transparent)
+            painter.fillRect(0, 0, self.width, self.height, Qt.GlobalColor.transparent)
             return
 
-        painter.fillRect(0, 0, self.width, self.height, Qt.black)
+        painter.fillRect(0, 0, self.width, self.height, Qt.GlobalColor.black)
         painter.drawImage(self.offset_x, self.offset_y, self.captured_image)
 
         if hasattr(self.hurt_vignette, '_base_vignette_mask') and self.hurt_vignette._intensity > 0:
             target_rect = QRect(self.offset_x, self.offset_y, self.hurt_vignette.width, self.hurt_vignette.height)
-            painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
             painter.setOpacity(self.hurt_vignette._intensity)
             painter.drawPixmap(target_rect, self.hurt_vignette._base_vignette_mask)
 
