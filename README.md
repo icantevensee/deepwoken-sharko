@@ -1,13 +1,13 @@
 
-### This is the experimental branch for the sharko. The latest developments on the program will be pushed here.
+### This is the experimental branch for the sharko. The latest developments on the application will be pushed here.
 
 ### For information on how to use, refer to the main branch.
 
 ### Progress:
-- **Code Organization**: Code has been split into multiple files, and a singlular type convention has been applied. I've also organized a bunch. There's still a little bit of work that needs to be done though
-- **New boss fight**: New boss fight that can be acessed with the fight option, so far there has been: A boss bar, jump attack, jump and hit desktop shortcut at mouse, and lazer attack added.
-- **General improvements**: Made improvements such as making the death animation particles not be cut off and optimizing some parts of code.
-- **Migrated to PyQt5**: Previously this was a Tkinter application, now it's 100% PyQt5, which means it's more optimized and it has a cooler, customized menu system.
+- **Code Organization**: Code has been split into files containing their own objects, and a singular type convention has been applied.
+- **New boss fight**: New boss fight that can be acessed with the fight option. This is what the majority of the code is about, but it doesn't affect performance for the base features.
+- **General improvements**: Made improvements such as stopping clipping for the death animation particles and optimizing some parts of code.
+- **Migrated to PyQt6**: Previously this was a Tkinter application, now it's written in PyQt6, letting it make use of all qt features.
 
 ### ToDo here in Experimental content before we can merge to main:
 - **Zero memory leaks**: I have fixed all memory leaks save for one where if fight mode is repeadedly toggled, it accumulates.
@@ -25,7 +25,7 @@
     - Interact with the Sharko by clicking on the interface and observing its various animations and sounds.
 
 ### Download:
-    - [Download ZIP](https://github.com/icantevensee/deepwoken-sharko/archive/refs/heads/Stable_Experimental_Content.zip)
+[Download ZIP](https://github.com/icantevensee/deepwoken-sharko/archive/refs/heads/Stable_Experimental_Content.zip)
 
 <img src="/img/2.png" width="400">
 
