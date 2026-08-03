@@ -83,11 +83,11 @@ class WarningInstance:
         try:
             self.anim.stop()
             try:
-                self.anim.valueChanged.disconnect(self.update_val)
+                self.anim.valueChanged.disconnect()
             except (RuntimeError, TypeError):
                 pass
             try:
-                self.anim.finished.disconnect(self.loop_logic)
+                self.anim.finished.disconnect()
             except (RuntimeError, TypeError):
                 pass
             self.anim.deleteLater()

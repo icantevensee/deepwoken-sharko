@@ -145,7 +145,7 @@ class HurtVignetteOverlay(QWidget):
     def deinitialize(self):
         if hasattr(self, "loop_timer") and self.loop_timer:
             try:
-                self.loop_timer.timeout.disconnect(self.update_intensity_loop)
+                self.loop_timer.timeout.disconnect()
             except (RuntimeError, TypeError):
                 pass
             self.loop_timer.stop()

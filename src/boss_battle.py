@@ -171,6 +171,24 @@ class CombatSystem():
         current_step    = 2
         last_image = None
 
+        self.label.setPixmap(QPixmap(os.path.join(self.IMAGES_PATH, "jump_charge.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "jump_charge.png")).transformed(self.horizontal_flip))
+
+        def shake_step(time_counter, intensity):
+            if intensity > 0.5:
+                time_counter += 1.2
+
+                shake_x = int(math.sin(time_counter) * intensity)
+                shake_y = int(math.cos(time_counter * 1.3) * intensity)
+                intensity *= 0.8
+
+                self.window.move(start_x + shake_x, start_y + shake_y)
+
+                self._single_shot(30, lambda: shake_step(time_counter, intensity))
+            else:
+                shake_x = 0.0
+                shake_y = 0.0
+                self._single_shot(30, step_move)
+
         def step_move():
             nonlocal last_image, current_step, hit_detected, offset, cached_images
             current_x = math.floor(points[current_step - 1][0])
@@ -243,7 +261,7 @@ class CombatSystem():
                 self.alt_jump_images = None
 
         self.fight_img_cleanup_func = cleanup_jump_images
-        step_move()
+        shake_step(time_counter=0, intensity=25)
 
     def jump_and_hit(self, jump_peak, shortcut, speed, on_complete=None):
         """Jump animation but coordinated with a desktop shortcut. jumps with the peak of curve at an icon's position and asks icon manager to launch it."""
@@ -297,6 +315,24 @@ class CombatSystem():
         pos = win32api.MAKELONG(int(start_pos[0]), int(start_pos[1]))
 
         last_image = None
+
+        self.label.setPixmap(QPixmap(os.path.join(self.IMAGES_PATH, "jump_charge.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "jump_charge.png")).transformed(self.horizontal_flip))
+
+        def shake_step(time_counter, intensity):
+            if intensity > 0.5:
+                time_counter += 1.2
+
+                shake_x = int(math.sin(time_counter) * intensity)
+                shake_y = int(math.cos(time_counter * 1.3) * intensity)
+                intensity *= 0.8
+
+                self.window.move(start_x + shake_x, start_y + shake_y)
+
+                self._single_shot(30, lambda: shake_step(time_counter, intensity))
+            else:
+                shake_x = 0.0
+                shake_y = 0.0
+                self._single_shot(30, step_move)
 
         def step_move():
             nonlocal last_image, current_step, hit_db, hit_detected, shortcut, original_count, item_name, offset, cached_images
@@ -388,7 +424,7 @@ class CombatSystem():
             self.alt_jump_images = None
 
         self.fight_img_cleanup_func = cleanup_jump_images
-        step_move()
+        shake_step(time_counter=0, intensity=25)
 
     def lazer(self, on_complete=None):
         """Qpainter based rendering lazer attack:
@@ -960,7 +996,7 @@ class CombatSystem():
                 "current_frame": 0,
                 "total_frames": 16,
                 "windup_frame_limit": 10,
-                "solid_smear_frame_limit": 12,
+                "solid_smear_frame_limit": 13,
                 "blurred_smear_frame_limit": 16,
             }
             animate_swing_frame(swing_state)

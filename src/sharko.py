@@ -54,7 +54,8 @@ import                                          psutil
 
 os.environ["QT_ENABLE_HIGHDPI_SCALING"] = "0"
 os.environ["QT_LOGGING_RULES"] = "qt.multimedia.ffmpeg*=false"
-os.environ["AV_LOG_LEVEL"] = "quiet"
+
+os.environ["QT_MULTIMEDIA_PREFERRED_PLUGINS"] = "windowsmediafoundation"
 
 # Enable dpi scaling
 try:
@@ -167,6 +168,8 @@ class Sharko(SharkoConstants, IconManager):
             "roar_2": [self.ROAR_SOUND_2, False, False],
             "theme_vamp": [self.THEME_VAMP, False, False],
             "theme_loop": [self.THEME_LOOP, False, True],
+            "theme_vamp_alt": [self.THEME_VAMP_ALT, False, False],
+            "theme_loop_alt": [self.THEME_LOOP_ALT, False, True],
         }
 
         for name, obj in self.fight_sound_paths.items():
@@ -390,18 +393,18 @@ class Sharko(SharkoConstants, IconManager):
         """Load all animation images from specified paths into state dictionaries."""
 
         self.qpixmaps = {
-            "idle1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "idle1.png")),
-            "idle2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "idle2.png")),
-            "walk1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "walk1.png")),
-            "walk2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "walk2.png")),
-            "glasses1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "glasses1.png")),
-            "glasses2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "glasses2.png")),
-            "sideframe": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "sideframe.png")),
-            "staringframe": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "staringframe.png")),
-            "talk1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "talking1.png")),
-            "talk2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "talking2.png")),
-            "talk_fwd_1": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "talking_forward1.png")),
-            "talk_fwd_2": QPixmap(os.path.join(self.CURRENT_IMAGES_PATH, "talking_forward2.png")),
+            "idle1": QPixmap(os.path.join(self.IMAGES_PATH, "idle1.png")),
+            "idle2": QPixmap(os.path.join(self.IMAGES_PATH, "idle2.png")),
+            "walk1": QPixmap(os.path.join(self.IMAGES_PATH, "walk1.png")),
+            "walk2": QPixmap(os.path.join(self.IMAGES_PATH, "walk2.png")),
+            "glasses1": QPixmap(os.path.join(self.IMAGES_PATH, "glasses1.png")),
+            "glasses2": QPixmap(os.path.join(self.IMAGES_PATH, "glasses2.png")),
+            "sideframe": QPixmap(os.path.join(self.IMAGES_PATH, "sideframe.png")),
+            "staringframe": QPixmap(os.path.join(self.IMAGES_PATH, "staringframe.png")),
+            "talk1": QPixmap(os.path.join(self.IMAGES_PATH, "talking1.png")),
+            "talk2": QPixmap(os.path.join(self.IMAGES_PATH, "talking2.png")),
+            "talk_fwd_1": QPixmap(os.path.join(self.IMAGES_PATH, "talking_forward1.png")),
+            "talk_fwd_2": QPixmap(os.path.join(self.IMAGES_PATH, "talking_forward2.png")),
         }
         self._load_cutscenes()
 
@@ -945,7 +948,10 @@ class Sharko(SharkoConstants, IconManager):
                 self._stop_all_timers()
                 if not self.audio_manager.is_track_playing("theme_loop"):
                     self.audio_manager.play("theme_loop", volume=self.sound_volume)
-                self.audio_manager.unload_sound("theme_vamp")
+                if self.cutscene_skipped:
+                    self._single_shot(500, lambda: self.audio_manager.unload_sound("theme_vamp"))
+                else:
+                    self._single_shot(5000, lambda: self.audio_manager.unload_sound("theme_vamp"))
 
                 if self.animation_timer:
                     self.animation_timer.stop()
@@ -972,6 +978,14 @@ class Sharko(SharkoConstants, IconManager):
                 self.new_state("fight")
                 self.fight_loop()
                 self._toggle_menu_items(["Fight"], False)
+            use_alt_theme = random.random() < 0.1
+            if use_alt_theme:
+                self.audio_manager.register_sound("theme_vamp", self.fight_sound_paths["theme_vamp_alt"][0], pitched=False, looped=False)
+                self.audio_manager.register_sound("theme_loop", self.fight_sound_paths["theme_loop_alt"][0], pitched=False, looped=True)
+            else:
+                self.audio_manager.register_sound("theme_vamp", self.fight_sound_paths["theme_vamp"][0], pitched=False, looped=False)
+                self.audio_manager.register_sound("theme_loop", self.fight_sound_paths["theme_loop"][0], pitched=False, looped=True)
+
             self.cutscene_presets["BeginFightCutscene"][-1]["on_complete"] = _start_fight_mode
             self._single_shot(self.audio_manager.get_sound_length("theme_vamp") - 100, lambda: self.audio_manager.play("theme_loop", volume=self.sound_volume))
             self.play_cutscene("BeginFightCutscene")

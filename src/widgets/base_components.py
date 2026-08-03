@@ -157,9 +157,9 @@ class VolumeSlider(QWidget):
         ):
             if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:
                 self.is_dragging = True
-                self.setValue(self._value_from_pos(event.x()))
+                self.setValue(self._value_from_pos(event.pos().x()))
             elif event.type() == QEvent.Type.MouseMove and self.is_dragging:
-                self.setValue(self._value_from_pos(event.x()))
+                self.setValue(self._value_from_pos(event.pos().x()))
             elif event.type() == QEvent.Type.MouseButtonRelease and event.button() == Qt.MouseButton.LeftButton:
                 self.is_dragging = False
             return True

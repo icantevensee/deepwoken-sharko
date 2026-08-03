@@ -286,36 +286,19 @@ class VFXManager(QWidget):
 
     def _load_assets(self):
         """Load particle texture pixmaps from disk and apply a tint for ring and spark assets."""
-        asset_map = {
-            "sparkle1": "../../assets/particles/sparkle1.png",
-            "sparkle2": "../../assets/particles/sparkle2.png",
-            "sparkle3": "../../assets/particles/sparkle3.png",
-            "spark": "../../assets/particles/spark.png",
-            "ring": "../../assets/particles/ring.png",
-            "ringportion": "../../assets/particles/ringportion.png",
-            "star1": "../../assets/particles/star1.png",
-            "unparryable_glyph": "../../assets/particles/unparryable_glyph.png",
-            "unparryable_outline": "../../assets/particles/unparryable_outline.png",
-            "unblockable_glyph": "../../assets/particles/unblockable_glyph.png",
-            "unblockable_outline": "../../assets/particles/unblockable_outline.png",
-            "falling_sharko": "../../assets/sharko/falling.png",
-            "ardour": "../../assets/particles/ardour.png"
-        }
-        for key, rel_path in asset_map.items():
-            full_path = os.path.join(self.script_dir, rel_path)
-            if os.path.exists(full_path):
-                img = QPixmap(full_path)
-                tinted = QPixmap(img.size())
-                tinted.fill(Qt.GlobalColor.transparent)
-                p = QPainter(tinted)
-                p.drawPixmap(0, 0, img)
-                p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
-                if key.startswith("ring") or key.startswith("spark"):
-                    p.fillRect(tinted.rect(), QColor(255, 220, 0))
-                if key.startswith("ardour"):
-                    p.fillRect(tinted.rect(), QColor(218, 74, 222))
-                p.end()
-                self.textures[key] = tinted
+        for key, rel_path in SharkoConstants.VFX_ASSET_MAP.items():
+            img = QPixmap(rel_path)
+            tinted = QPixmap(img.size())
+            tinted.fill(Qt.GlobalColor.transparent)
+            p = QPainter(tinted)
+            p.drawPixmap(0, 0, img)
+            p.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceAtop)
+            if key.startswith("ring") or key.startswith("spark"):
+                p.fillRect(tinted.rect(), QColor(255, 220, 0))
+            if key.startswith("ardour"):
+                p.fillRect(tinted.rect(), QColor(218, 74, 222))
+            p.end()
+            self.textures[key] = tinted
 
     def set_laser(self, laser_id, x, y, angle, color=QColor(0, 150, 255), offset=0):
         """Create or update a laser instance with given origin, angle, color, and offset."""

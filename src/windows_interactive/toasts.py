@@ -373,7 +373,7 @@ class ToastManager:
 
         self._is_deinitialized = True
 
-        self.bridge.toast_captured.disconnect(self.on_toast_data_received)
+        self.bridge.toast_captured.disconnect()
         self.bridge.deleteLater()
         self.bridge = None
 

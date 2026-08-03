@@ -58,12 +58,25 @@ class SharkoConstants:
     TEXT_OFFSET_LEFT            = 97
     TEXT_OFFSET_RIGHT           = 9
 
-    # General paths
-    CURRENT_IMAGES_PATH         = "assets/sharko/"
+    # Sprites path
     IMAGES_PATH                 = "assets/sharko/"
-    TALKING_SENTENCES_PATH      = "assets/sentences/talking/"
-    GREETING_SENTENCES_PATH     = "assets/sentences/greeting/"
-    REMOVAL_SENTENCES_PATH      = "assets/sentences/removal/"
+
+    # Vfx assets
+    VFX_ASSET_MAP = {
+        "sparkle1": "assets/particles/sparkle1.png",
+        "sparkle2": "assets/particles/sparkle2.png",
+        "sparkle3": "assets/particles/sparkle3.png",
+        "spark": "assets/particles/spark.png",
+        "ring": "assets/particles/ring.png",
+        "ringportion": "assets/particles/ringportion.png",
+        "star1": "assets/particles/star1.png",
+        "unparryable_glyph": "assets/particles/unparryable_glyph.png",
+        "unparryable_outline": "assets/particles/unparryable_outline.png",
+        "unblockable_glyph": "assets/particles/unblockable_glyph.png",
+        "unblockable_outline": "assets/particles/unblockable_outline.png",
+        "falling_sharko": "assets/sharko/falling.png",
+        "ardour": "assets/particles/ardour.png"
+    }
 
     # Bar paths
     BOSS_BAR_IMG_PATH           = "assets/UI/boss_bar_border.png"
@@ -77,28 +90,30 @@ class SharkoConstants:
     PARRY_OVERLAY_PATH          = "assets/UI/parry_block_flash_overlay.png"
 
     # Themes
-    THEME_VAMP                  = "assets/sounds/boss-phase-music/Theme_Vamp.mp3"
-    THEME_LOOP                  = "assets/sounds/boss-phase-music/Theme_Loop.mp3"
+    THEME_VAMP                  = "assets/audio/boss-phase-music/Theme_Vamp.mp3"
+    THEME_LOOP                  = "assets/audio/boss-phase-music/Theme_Loop.mp3"
+    THEME_VAMP_ALT              = "assets/audio/boss-phase-music/Theme_Vamp_Alt.mp3"
+    THEME_LOOP_ALT              = "assets/audio/boss-phase-music/Theme_Loop_Alt.mp3"
 
     # Sounds
-    END_TALKING_SOUND           = "assets/sounds/end_talking.mp3"
-    START_TALKING_SOUND         = "assets/sounds/start_talking.mp3"
-    CLASH_SOUND                 = "assets/sounds/Clash.mp3"
-    GREETING_SOUND              = "assets/sounds/greeting.mp3"
-    ANSWER_SOUND                = "assets/sounds/answer_question.mp3"
+    END_TALKING_SOUND           = "assets/audio/end_talking.mp3"
+    START_TALKING_SOUND         = "assets/audio/start_talking.mp3"
+    CLASH_SOUND                 = "assets/audio/Clash.mp3"
+    GREETING_SOUND              = "assets/audio/greeting.mp3"
+    ANSWER_SOUND                = "assets/audio/answer_question.mp3"
 
     # Combat sfx
-    BLOCK_ATTEMPT_SOUND         = "assets/sounds/fight-sfx/Block_Attempt.mp3"
-    PARRY_SOUND                 = "assets/sounds/fight-sfx/Parry.mp3"
-    BLOCK_SOUND                 = "assets/sounds/fight-sfx/Block.mp3"
-    HIT_SOUND                   = "assets/sounds/fight-sfx/Hit.mp3"
-    POSTURE_BREAK_SOUND         = "assets/sounds/fight-sfx/Posture_Break.mp3"
+    BLOCK_ATTEMPT_SOUND         = "assets/audio/fight-sfx/Block_Attempt.mp3"
+    PARRY_SOUND                 = "assets/audio/fight-sfx/Parry.mp3"
+    BLOCK_SOUND                 = "assets/audio/fight-sfx/Block.mp3"
+    HIT_SOUND                   = "assets/audio/fight-sfx/Hit.mp3"
+    POSTURE_BREAK_SOUND         = "assets/audio/fight-sfx/Posture_Break.mp3"
 
     # fight sfx
-    LONG_ROAR_SOUND             = "assets/sounds/fight-sfx/Long_Roar1.mp3"
-    ROAR_SOUND_1                = "assets/sounds/fight-sfx/Roar1.mp3"
-    ROAR_SOUND_2                = "assets/sounds/fight-sfx/Roar2.mp3"
-    DREAD_BREATH_SOUND          = "assets/sounds/fight-sfx/Breath.mp3"
+    LONG_ROAR_SOUND             = "assets/audio/fight-sfx/Long_Roar1.mp3"
+    ROAR_SOUND_1                = "assets/audio/fight-sfx/Roar1.mp3"
+    ROAR_SOUND_2                = "assets/audio/fight-sfx/Roar2.mp3"
+    DREAD_BREATH_SOUND          = "assets/audio/fight-sfx/Breath.mp3"
 
     # Fight constants
     MAX_BOSS_HEALTH             = 2000
@@ -122,7 +137,7 @@ class SharkoConstants:
     }
 
     # Fonts
-    SPEECH_FONT             = "assets/fonts/TheFont.ttf"
+    SPEECH_FONT             = "assets/fonts/Main_Font.ttf"
     BOSS_FONT               = "assets/fonts/Boss_Font.otf"
 
     # COM interfaces
