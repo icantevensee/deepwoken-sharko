@@ -21,8 +21,8 @@ class SharkoCombatAI:
         """Initialize the combat ai with tiered attack lists."""
         self.sharko = sharko
         self.tier_1_attacks = [self._jump_and_attack, self._do_area_belly_flop]
-        self.tier_2_attacks = [self._toast_attack, self._do_laser]
-        self.tier_3_attacks = [self.taskbar_asgore_attack, self._roar_attack]
+        self.tier_2_attacks = [self._area_inflate_attack, self._toast_attack, self._do_laser]
+        self.tier_3_attacks = [self._taskbar_asgore_attack, self._sans_mouse_attack]
         self.all_attacks = (self.tier_1_attacks + self.tier_2_attacks + self.tier_3_attacks)
         self._first_attack_db = False
 
@@ -38,7 +38,7 @@ class SharkoCombatAI:
         self.sharko.log_stats()
 
     def _inter_attack_idle(self):
-        self.sharko.fight_img_cleanup_func = None
+        self.sharko.fight_mode_cleanup_function = None
         sharko = self.sharko
         num_idle_frames = sharko.INTER_ATTACK_IDLE_TIME // sharko.ANIMATION_DELAY
         current_idle_frame = 0
@@ -148,5 +148,11 @@ class SharkoCombatAI:
 
         CombatSystem.jump_and_hit(sharko, item_pos, closest[0], 0.4, on_complete=self._inter_attack_idle)
 
-    def taskbar_asgore_attack(self):
+    def _taskbar_asgore_attack(self):
         CombatSystem.taskbar_asgore_attack(self.sharko, 8, on_complete=self._inter_attack_idle)
+
+    def _area_inflate_attack(self):
+        CombatSystem.area_inflate_attack(self.sharko, 4, 1000, on_complete=self._inter_attack_idle)
+
+    def _sans_mouse_attack(self):
+        CombatSystem.sans_mouse_attack(self.sharko, 5, on_complete=self._inter_attack_idle)

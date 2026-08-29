@@ -292,13 +292,15 @@ class ToastManager:
 
     def animate_constant_speed_frame(self, window_handle, toast_states, w, h):
         """Calculates a clean sine arc that shifts coordinates fluidly to match live cursor movement."""
-        if self._is_deinitialized:
+        if self._is_deinitialized or not window_handle:
             return
 
         screen_w = win32api.GetSystemMetrics(0)
         screen_h = win32api.GetSystemMetrics(1)
 
         if not toast_states["has_hit_mouse"]:
+            QTimer.singleShot(13, lambda: self.animate_constant_speed_frame(window_handle, toast_states, w, h))
+
             toast_states["current_frame"] += 1
             t = toast_states["current_frame"] / toast_states["total_frames"]
 
@@ -350,14 +352,15 @@ class ToastManager:
             next_x = window_handle.x() + (ux * toast_states["pixel_speed"])
             next_y = window_handle.y() + (uy * toast_states["pixel_speed"])
 
-        is_offscreen = ((next_x + w) < 0 or next_x > screen_w or (next_y + h) < 0 or next_y > screen_h)
+            is_offscreen = ((next_x + w) < 0 or next_x > screen_w or (next_y + h) < 0 or next_y > screen_h)
 
-        if is_offscreen and toast_states["has_hit_mouse"]:
-            self.cleanup_toast(window_handle)
-            return
+            if is_offscreen:
+                self.cleanup_toast(window_handle)
+                return
+            else:
+                QTimer.singleShot(13, lambda: self.animate_constant_speed_frame(window_handle, toast_states, w, h))
 
         window_handle.move(int(next_x), int(next_y))
-        QTimer.singleShot(13, lambda: self.animate_constant_speed_frame(window_handle, toast_states, w, h))
 
     def cleanup_toast(self, window_handle):
         """Safely removes the window from UI memory to allow garbage collection."""

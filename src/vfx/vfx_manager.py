@@ -156,8 +156,10 @@ class Particle:
             self.rot_speed  = random.uniform(-15, 15)
             self.friction   = 0.96
         elif p_type in ("unparryable_glyph", "unblockable_glyph"):
+            self.scale      = 0.0
             self.friction   = 0.96
         elif p_type in ("unparryable_outline", "unblockable_outline"):
+            self.scale      = 0.0
             self.rotation   = random.uniform(0, 360)
             self.rot_speed  = 5
             self.friction   = 0.96

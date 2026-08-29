@@ -166,6 +166,7 @@ class Sharko(SharkoConstants, IconManager):
             "dread_breath": [self.DREAD_BREATH_SOUND, False, False],
             "roar_1": [self.ROAR_SOUND_1, False, False],
             "roar_2": [self.ROAR_SOUND_2, False, False],
+            "unparryable_attack": [self.UNPARRYABLE_ATTACK, True, False],
             "theme_vamp": [self.THEME_VAMP, False, False],
             "theme_loop": [self.THEME_LOOP, False, True],
             "theme_vamp_alt": [self.THEME_VAMP_ALT, False, False],
@@ -454,14 +455,14 @@ class Sharko(SharkoConstants, IconManager):
 
         total_dx = target_x - start_x
         duration_ms = int(math.ceil(abs(total_dx) / self.WALKSPEED) * 1000)
-        num_steps = max(1, duration_ms // self.FRAME_DELAY_MS)
+        num_steps = max(1, duration_ms // 16)
         step_dx = total_dx / num_steps
 
         def step_move(current_step, current_x):
             if self.fight_mode_active:
                 return
             if self.currently_moving:
-                self._single_shot(self.FRAME_DELAY_MS, self.idle_state)
+                self._single_shot(16, self.idle_state)
                 return
             if current_step >= num_steps:
                 self.window.setGeometry(target_x, self.window.y(), self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
@@ -471,9 +472,9 @@ class Sharko(SharkoConstants, IconManager):
             new_x = int(current_x + step_dx)
             self.x = new_x
             self.window.setGeometry(new_x, self.window.y(), self.WINDOW_SIZE_X, self.WINDOW_SIZE_Y)
-            self._single_shot(self.FRAME_DELAY_MS, lambda: step_move(current_step + 1, current_x + step_dx))
+            self._single_shot(16, lambda: step_move(current_step + 1, current_x + step_dx))
 
-        self._single_shot(self.FRAME_DELAY_MS, lambda: step_move(0, start_x))
+        self._single_shot(16, lambda: step_move(0, start_x))
 
     def play_cutscene(self, cutscene_preset):
         """Initializes playing a cutscene preset if no other cutscene is active."""
@@ -711,7 +712,7 @@ class Sharko(SharkoConstants, IconManager):
         """Mouse listener callback for button clicks.
             - Can later trigger the safe action function.
             - Can also supress clicks during fight mode to stop the user from changing the desktop icon settings and ruin attacks."""
-        if button == mouse.Button.right and self.suppress_right_click and WindowsUtils.should_supress_click():
+        if button == mouse.Button.right and self.suppress_right_click and WindowsUtils.should_suppress_right_click():
             mouse.Listener.suppress_event(self)
         if pressed:
             self.input_emitter.action_triggered.emit(x, y, button)
@@ -752,6 +753,7 @@ class Sharko(SharkoConstants, IconManager):
         if hasattr(self, "idle_timer") and self.idle_timer:
             self.idle_timer.stop()
             self.idle_timer.deleteLater()
+            self.idle_timer = None
         self.idle_timer = self._add_timer(QTimer())
         self.idle_timer.setSingleShot(True)
         self.idle_timer.timeout.connect(self.idle_state)
@@ -1003,9 +1005,9 @@ class Sharko(SharkoConstants, IconManager):
                 self.main_monitor_clipper = None
             for name in self.fight_sound_paths:
                 self.audio_manager.unload_sound(name)
-            if hasattr(self, "fight_img_cleanup_func") and self.fight_img_cleanup_func:
-                self.fight_img_cleanup_func()
-                self.fight_img_cleanup_func = None
+            if hasattr(self, "fight_mode_cleanup_function") and self.fight_mode_cleanup_function:
+                self.fight_mode_cleanup_function()
+                self.fight_mode_cleanup_function = None
             if hasattr(self, "combat_ai") and self.combat_ai:
                 del self.combat_ai
                 self.combat_ai = None

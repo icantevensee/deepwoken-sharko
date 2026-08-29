@@ -19,9 +19,10 @@ from PyQt6.QtWidgets import QWidget
 class WarningInstance:
     """Helper class to create, manage, and clean up warnings."""
 
-    def __init__(self, rect, duration_ms, parent_update_func, on_complete=None):
+    def __init__(self, rect, duration_ms, parent_update_func, shape="rect", on_complete=None):
         """Initialize a single warning region with an opacity animation and exit timer."""
         self.rect = rect
+        self.shape = shape
         self.opacity = 0
         self.is_fading_out = False
         self.exit_timer = None  # Store timer reference for cleanup
@@ -111,16 +112,24 @@ class MultiWarningOverlay(QWidget):
 
         self.active_warnings = []
 
-    def trigger_warning(self, width, height, duration_ms, x, y, on_complete=None):
+    def trigger_warning(self, width, height, duration_ms, x, y, shape="rect", on_complete=None):
         """Create a new warning instance covering a given rectangle and add it to the overlay."""
         rect = QRect(x, y, width, height)
 
-        new_warning = WarningInstance(rect, duration_ms, self.update, on_complete)
+        new_warning = WarningInstance(rect, duration_ms, self.update, shape, on_complete)
         self.active_warnings.append(new_warning)
+
+    def trigger_circular_warning(self, center_x, center_y, radius, duration_ms, on_complete=None):
+        """Helper to trigger a circular warning using center coordinates and a radius."""
+        diameter = radius * 2
+        top_left_x = center_x - radius
+        top_left_y = center_y - radius
+        self.trigger_warning(diameter, diameter, duration_ms, top_left_x, top_left_y, "circle", on_complete)
 
     def paintEvent(self, event):
         """Draw all active warning stripes and borders onto the overlay."""
-        # Maintain z-order on top of Sharko window
+        from PyQt6.QtGui import QPainterPath  # Import needed for circular clipping
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
@@ -136,17 +145,28 @@ class MultiWarningOverlay(QWidget):
             rect = w_inst.rect
             x, y, w, h = rect.getRect()
 
-            # Draw Stripes
             painter.save()
-            painter.setClipRect(rect)
+
+            # Apply clipping shape
+            if w_inst.shape == "circle":
+                clip_path = QPainterPath()
+                clip_path.addEllipse(float(x), float(y), float(w), float(h))
+                painter.setClipPath(clip_path)
+            else:
+                painter.setClipRect(rect)
+
+            # Stripes
             painter.setPen(QPen(color, 5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
             for j in range(-h, w + h, 25):
                 painter.drawLine(x + j, y, x + j + h, y + h)
             painter.restore()
 
-            # Draw Border
+            # Draw outer border
             painter.setPen(QPen(color, 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap, Qt.PenJoinStyle.MiterJoin))
-            painter.drawRect(rect)
+            if w_inst.shape == "circle":
+                painter.drawEllipse(rect)
+            else:
+                painter.drawRect(rect)
 
     def deinitialize(self):
         """Clean up all warning instances and delete the overlay widget."""

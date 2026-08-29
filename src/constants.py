@@ -43,7 +43,7 @@ class SharkoConstants:
     GREETING_ANIMATION_DELAY    = 8000
     REMOVAL_ANIMATION_DELAY     = 3800
     INACTIVE_TIME_REQUIREMENT   = 60000
-    INTER_ATTACK_IDLE_TIME      = 1000
+    INTER_ATTACK_IDLE_TIME      = 3000
 
     # Window
     WINDOW_SIZE_X               = 357
@@ -51,6 +51,11 @@ class SharkoConstants:
 
     ROAR_MOUTH_OFFSET_Y         = 277
     ROAR_MOUTH_OFFSET_X_RIGHT   = 250
+
+    SIDEWAYS_PUNCH_SPRITE_SIZE_X   = 199
+
+    PUFFED_UP_SPRITE_SIZE_X   = 690
+    PUFFED_UP_SPRITE_SIZE_Y   = 650
 
     FALLING_SHARKO_SIZE_X       = 696
     FALLING_SHARKO_SIZE_Y       = 772
@@ -114,6 +119,7 @@ class SharkoConstants:
     ROAR_SOUND_1                = "assets/audio/fight-sfx/Roar1.mp3"
     ROAR_SOUND_2                = "assets/audio/fight-sfx/Roar2.mp3"
     DREAD_BREATH_SOUND          = "assets/audio/fight-sfx/Breath.mp3"
+    UNPARRYABLE_ATTACK          = "assets/audio/fight-sfx/Unparryable_Attack.mp3"
 
     # Fight constants
     MAX_BOSS_HEALTH             = 2000
@@ -127,13 +133,16 @@ class SharkoConstants:
 
     # Attack statistics
     ATTACK_STATS = {
-        "icon_attack": {"damage": 20, "posture": 3, "hitstun": {"duration": 500, "speed": 2}},
-        "toast_attack": {"damage": 40, "posture": 5, "hitstun": {"duration": 1000, "speed": 3}},
-        "falling_sharko": {"damage": 100, "posture": 15, "hitstun": {"duration": 1500, "speed": 1}},
-        "jump": {"damage": 20, "posture": 2, "hitstun": {"duration": 1000, "speed": 3}},
-        "single_lazer_hit": {"damage": 5, "posture": 1, "hitstun": {"duration": 500, "speed": 3}},
-        "asgore_attack_swing": {"damage": 30, "posture": 8, "hitstun": {"duration": 500, "speed": 1}},
-        "sword_slash": {"damage": 25, "posture": 3, "hitstun": {"duration": 2000, "speed": 2}},
+        "icon_attack": {"damage": 20, "posture": 3, "hitstun": {"duration": 500, "speed": 2}, "unparryable": False},
+        "toast_attack": {"damage": 40, "posture": 5, "hitstun": {"duration": 1000, "speed": 3}, "unparryable": False},
+        "falling_sharko": {"damage": 100, "posture": 15, "hitstun": {"duration": 1500, "speed": 1}, "unparryable": True},
+        "jump": {"damage": 20, "posture": 2, "hitstun": {"duration": 1000, "speed": 3}, "unparryable": False},
+        "single_lazer_hit": {"damage": 5, "posture": 1, "hitstun": {"duration": 500, "speed": 3}, "unparryable": False},
+        "asgore_attack_swing": {"damage": 30, "posture": 8, "hitstun": {"duration": 500, "speed": 1}, "unparryable": False},
+        "sword_slash": {"damage": 25, "posture": 3, "hitstun": {"duration": 2000, "speed": 2}, "unparryable": False},
+        "sans_mouse_attack_initial_hit": {"damage": 30, "posture": 5, "hitstun": {"duration": 1500, "speed": 2}, "unparryable": False},
+        "sans_mouse_attack_side_sweep": {"damage": 75, "posture": 15, "hitstun": {"duration": 2000, "speed": 2}, "unparryable": True},
+        "area_inflate_attack": {"damage": 75, "posture": 17, "hitstun": {"duration": 1500, "speed": 1}, "unparryable": True},
     }
 
     # Fonts
@@ -149,6 +158,7 @@ class SharkoConstants:
     SPI_SETMOUSESPEED       = 0x0071
     SPIF_UPDATEINIFILE      = 0x01
     SPIF_SENDCHANGE         = 0x02
+    LVS_AUTOARRANGE         = 0x0100
     LVS_EX_SNAPTOGRID       = 0x00080000
     WDA_EXCLUDEFROMCAPTURE  = 0x00000011
     SWC_DESKTOP             = 0x08
@@ -191,7 +201,6 @@ class SharkoConstants:
     TEXT_LINE_SPACING           = 3
     FONT_SIZE_MAX               = 80
     FONT_SIZE_MIN               = 5
-    FRAME_DELAY_MS              = 16  # Milliseconds between animation frames
 
     TOAST_TEXT = {
         "titles": ["Attack!", "Destroy!"],

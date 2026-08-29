@@ -91,7 +91,7 @@ class SwordWindow(QWidget):
         self.y = self.appear_start_y
         self.is_appearing = True
         self.appear_progress = 0.0
-        self.setGeometry(0, 0, ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1))
+        self.setGeometry(0, 0, ctypes.windll.user32.GetSystemMetrics(0), ctypes.windll.user32.GetSystemMetrics(1) - 1)
         self.timer.start(30)
 
     def set_follow_mode(self, mode="mouse", window=None):

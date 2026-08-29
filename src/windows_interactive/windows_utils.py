@@ -12,6 +12,7 @@ import ctypes
 import ctypes.wintypes
 import os
 import time
+import math
 import pythoncom
 
 import win32com.client as   wcomcli
@@ -74,9 +75,8 @@ class WindowsUtils:
             print("Could not find the Desktop icon list view control.")
             return
 
-        LVS_AUTOARRANGE = 0x0100
         current_style = win32gui.GetWindowLong(list_view, win32con.GWL_STYLE)
-        new_style = current_style & ~LVS_AUTOARRANGE
+        new_style = current_style & ~SharkoConstants.LVS_AUTOARRANGE
         win32gui.SetWindowLong(list_view, win32con.GWL_STYLE, new_style)
 
         current_ext_style = win32gui.SendMessage(list_view, SharkoConstants.LVM_GETEXTENDEDLISTVIEWSTYLE, 0, 0)
@@ -123,7 +123,7 @@ class WindowsUtils:
         win32gui.EnumWindows(callback, None)
 
     @staticmethod
-    def should_supress_click():
+    def should_suppress_right_click():
         """Determine whether a mouse click should be suppressed based on whether it is over the desktop area."""
         cursor_pos = win32gui.GetCursorPos()
         hwnd_under_cursor = win32gui.WindowFromPoint(cursor_pos)
@@ -409,3 +409,44 @@ class WindowsUtils:
             user32.ShowWindow(hwnd_taskbar, cmd_show)
         else:
             print("Error: Could not locate the Taskbar handle to toggle visibility.")
+
+    @staticmethod
+    def move_mouse_via_singleshot(singleshot, start_x, start_y, end_x, end_y, speed_fraction, on_complete):
+        """Moves the mouse smoothly by scheduling ticks using the provided singleshot function."""
+        user32 = ctypes.windll.user32
+
+        screen_width = user32.GetSystemMetrics(0)
+        screen_height = user32.GetSystemMetrics(1)
+        screen_diagonal = math.sqrt(screen_width**2 + screen_height**2)
+        speed_px_per_sec = screen_diagonal * speed_fraction
+
+        dx = end_x - start_x
+        dy = end_y - start_y
+        travel_distance_px = math.sqrt(dx ** 2 + dy ** 2)
+
+        if travel_distance_px == 0 or speed_px_per_sec <= 0:
+            user32.SetCursorPos(end_x, end_y)
+            singleshot(delay_ms=16, callback=on_complete)
+            return
+
+        total_duration = travel_distance_px / speed_px_per_sec
+        start_time = time.time()
+
+        def tick():
+            dt = time.time() - start_time
+            if dt >= total_duration:
+                user32.SetCursorPos(end_x, end_y)
+                print(" Mouse movement completed.")
+                on_complete()
+                return
+
+            progress = dt / total_duration
+
+            current_x = int(start_x + dx * progress)
+            current_y = int(start_y + dy * progress)
+
+            user32.SetCursorPos(current_x, current_y)
+
+            singleshot(delay_ms=16, callback=tick)
+
+        tick()

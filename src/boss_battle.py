@@ -4,20 +4,22 @@ Boss attacks + damage functions.
 Every attack that can happen in the bossfight is here as a function. The damage mouse and damage Sharko functions are here too.
 """
 
-import      time
-import      math
-import      numpy as np
-import      random
-import      os
+import              time
+import              math
+import     numpy as np
+import              random
+import              os
 
-import      win32api
-import      win32con
-import      win32gui
+from pynput  import mouse
+
+import              win32api
+import              win32con
+import              win32gui
 
 from ctypes                             import windll
 
 from PyQt6.QtGui                        import QPixmap, QPainter, QTransform
-from PyQt6.QtCore                       import QTimer, Qt, QCoreApplication, QPoint, QRect
+from PyQt6.QtCore                       import QTimer, Qt, QCoreApplication, QPoint, QPointF, QRect, QRectF, QSequentialAnimationGroup, QEasingCurve, QPropertyAnimation, pyqtProperty
 from PyQt6.QtWidgets                    import QWidget
 
 from img_utils                          import ImgUtils
@@ -58,6 +60,9 @@ class CombatSystem():
                 if self.particles_manager:
                     self.particles_manager.play_block(mouse_x, mouse_y)
             else:
+                if self.ATTACK_STATS[attack_type]["unparryable"]:
+                    CombatSystem.apply_damage_player(self, False, damage_amount, hitstun_info)
+                    return
                 self.last_parry_block_time = 0
                 self._apply_posture(-self.POSTURE_PARRY_COST)
                 try:
@@ -122,10 +127,10 @@ class CombatSystem():
         sprite_x, sprite_y = None, None
         current_x, current_y = self.window.geometry().x(), self.window.geometry().y()
         if self.current_facing == "Left":
-            sprite_x, sprite_y = current_x, current_y + 178
+            sprite_x = current_x
         else:
-            sprite_x, sprite_y = current_x + 190, current_y + 178
-        print(x, y, sprite_x, sprite_y)
+            sprite_x = current_x + self.WINDOW_SIZE_X - self.SPRITE_WIDTH
+        sprite_y = current_y + self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT
 
         if sprite_x <= x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= y <= sprite_y + self.SPRITE_HEIGHT:
             CombatSystem.apply_damage_sharko(self)
@@ -231,10 +236,9 @@ class CombatSystem():
                 sprite_y = current_y
                 if cached_images == self.alt_jump_images:
                     sprite_x += 0
-                    sprite_y += 178
                 else:
-                    sprite_x += 190
-                    sprite_y += 178
+                    sprite_x += self.WINDOW_SIZE_X - self.SPRITE_WIDTH
+                sprite_y += self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT
 
                 if sprite_x <= mouse_x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= mouse_y <= sprite_y + self.SPRITE_HEIGHT:
                     hit_detected = True
@@ -260,7 +264,7 @@ class CombatSystem():
                 del self.alt_jump_images
                 self.alt_jump_images = None
 
-        self.fight_img_cleanup_func = cleanup_jump_images
+        self.fight_mode_cleanup_function = cleanup_jump_images
         shake_step(time_counter=0, intensity=25)
 
     def jump_and_hit(self, jump_peak, shortcut, speed, on_complete=None):
@@ -377,11 +381,9 @@ class CombatSystem():
 
                 if cached_images == self.alt_jump_images:
                     sprite_x += 0
-                    sprite_y += 178
                 else:
-                    sprite_x += 190
-                    sprite_y += 178
-
+                    sprite_x += self.WINDOW_SIZE_X - self.SPRITE_WIDTH
+                sprite_y += self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT
                 if sprite_x <= mouse_x <= sprite_x + self.SPRITE_WIDTH and sprite_y <= mouse_y <= sprite_y + self.SPRITE_HEIGHT:
                     hit_detected = True
                     CombatSystem.damage(self, "jump")
@@ -423,7 +425,7 @@ class CombatSystem():
             self.jump_images = None
             self.alt_jump_images = None
 
-        self.fight_img_cleanup_func = cleanup_jump_images
+        self.fight_mode_cleanup_function = cleanup_jump_images
         shake_step(time_counter=0, intensity=25)
 
     def lazer(self, on_complete=None):
@@ -598,7 +600,7 @@ class CombatSystem():
             self._lazer_face = None
             self._lazer_corals = None
 
-        self.fight_img_cleanup_func = cleanup_lazer_images
+        self.fight_mode_cleanup_function = cleanup_lazer_images
         self.temp_combat_timer = QTimer()
         self.temp_combat_timer.timeout.connect(update_lazer)
         self.temp_combat_timer.start(30)
@@ -617,6 +619,8 @@ class CombatSystem():
             nonlocal groups
             if not self.fight_mode_active:
                 return
+
+            self.audio_manager.play("unparryable_attack", volume=self.sound_volume)
             subdivision_pool = list(range(1, num_subdivisions + 1))
             lethal_subdivisions = random.sample(subdivision_pool, num_subdivisions_to_attack)
 
@@ -630,7 +634,6 @@ class CombatSystem():
                         groups.append(current_group)
                         current_group = [sub]
                 groups.append(current_group)
-
             for i, group in enumerate(groups):
                 start_subdivision = group[0]
                 group_count = len(group)
@@ -639,7 +642,7 @@ class CombatSystem():
 
                 is_last = (i == len(groups) - 1)
                 callback_to_pass = on_complete if is_last else None
-                self.warning_manager.trigger_warning(merged_width, self.screen_y, warning_time, calculated_x, 0, on_complete=callback_to_pass)
+                self.warning_manager.trigger_warning(merged_width, self.screen_y, warning_time, calculated_x, 0, shape="rect", on_complete=callback_to_pass)
 
         def create_attack(on_complete):
             if not self.fight_mode_active:
@@ -660,13 +663,13 @@ class CombatSystem():
 
         CombatSystem.jump(
             self,
-            [jump_end, work_area_height - 343],
+            [jump_end, work_area_height - self.WINDOW_SIZE_Y],
             0.4,
             on_complete=lambda: create_warnings(
                 on_complete=lambda: create_attack(
                     on_complete=lambda: CombatSystem.jump(
                         self,
-                        [original_x, work_area_height - 343],
+                        [original_x, work_area_height - self.WINDOW_SIZE_Y],
                         0.4,
                         on_complete=on_complete
                     )
@@ -734,13 +737,322 @@ class CombatSystem():
             self._roar3_frame = None
             self._roar4_frame = None
 
-        self.fight_img_cleanup_func = cleanup_roar_images
+        self.fight_mode_cleanup_function = cleanup_roar_images
 
         self.temp_combat_timer = QTimer()
         self.temp_combat_timer.timeout.connect(update_roar)
         self.temp_combat_timer.start(self.ANIMATION_DELAY // 2)
 
+    def sans_mouse_attack(self, num_attacks=4, on_complete=None):
+        """Attack similar to how sans uses his hands to fling the heart against the walls of the box and then creates a hazard along said wall in undertale,
+        destroyman flies over to the mouse, punches it into the side of the screen, and then flies along that side of the screen to hit it if you don't move away."""
+        self._blurred_movement_frame = QPixmap(os.path.join(self.IMAGES_PATH, "blurred_frame.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "blurred_frame.png")).transformed(self.horizontal_flip)
+
+        self._uppercut_frame = QPixmap(os.path.join(self.IMAGES_PATH, "uppercut.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "uppercut.png")).transformed(self.horizontal_flip)
+        self._downwards_slam_frame = QPixmap(os.path.join(self.IMAGES_PATH, "downwards_slam.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "downwards_slam.png")).transformed(self.horizontal_flip)
+        self._punch_right_frame = QPixmap(os.path.join(self.IMAGES_PATH, "flying_sideways_punch.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "flying_sideways_punch.png")).transformed(self.horizontal_flip)
+
+        self._punch_left_frame = QPixmap(self._punch_right_frame.size())
+        self._punch_left_frame.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(self._punch_left_frame)
+
+        local_flip_x = self.WINDOW_SIZE_X - self.SIDEWAYS_PUNCH_SPRITE_SIZE_X // 2 if self.current_facing == "Right" else self.SIDEWAYS_PUNCH_SPRITE_SIZE_X // 2
+        painter.scale(-1, 1)
+        painter.translate(-2 * local_flip_x, 0)
+
+        painter.drawPixmap(0, 0, self._punch_right_frame)
+        painter.end()
+
+        if self.current_facing == "Right":
+            self._punch_frames = [self._uppercut_frame, self._punch_right_frame, self._downwards_slam_frame, self._punch_left_frame]
+        else:
+            self._punch_frames = [self._uppercut_frame, self._punch_left_frame, self._downwards_slam_frame, self._punch_right_frame]
+
+        self.sweeps_remaining = num_attacks
+
+        screen_x, screen_y = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
+
+        shake_start_x, shake_start_y = self.window.geometry().x(), self.window.geometry().y()
+        self.label.setPixmap(self._blurred_movement_frame)
+
+        def shake_step(time_counter, intensity):
+            if intensity > 10:
+                time_counter += 1.2
+
+                shake_x = int(math.sin(time_counter) * intensity)
+                shake_y = int(math.cos(time_counter * 1.3) * intensity)
+                intensity *= 0.8
+
+                self.window.move(shake_start_x + shake_x, shake_start_y + shake_y)
+
+                self._single_shot(30, lambda: shake_step(time_counter, intensity))
+            else:
+                shake_x = 0.0
+                shake_y = 0.0
+                self._single_shot(30, initialize_launch_towards_mouse)
+
+        def initialize_launch_towards_mouse():
+
+            self.label.setPixmap(self._blurred_movement_frame)
+            possible_directions = [1, 2, 3, 4]
+            radius = 400
+
+            mouse_x, mouse_y = win32api.GetCursorPos()
+            space_needed_x, space_needed_y = (self.SPRITE_WIDTH // 2 + radius), (self.SPRITE_HEIGHT // 2 + radius)
+            if mouse_x < space_needed_x:
+                possible_directions.remove(2)
+            elif mouse_x > screen_x - space_needed_x:
+                possible_directions.remove(4)
+
+            if mouse_y < space_needed_y:
+                possible_directions.remove(3)
+            elif mouse_y > screen_y - space_needed_y:
+                possible_directions.remove(1)
+
+            hit_direction = random.choice(possible_directions)
+
+            start_x, start_y = self.window.geometry().x(), self.window.geometry().y()
+            if self.current_facing == "Left":
+                center_offset_x = -self.SPRITE_HEIGHT // 2
+            else:
+                center_offset_x = -self.WINDOW_SIZE_X + self.SPRITE_WIDTH // 2
+            center_offset_y = -self.WINDOW_SIZE_Y + self.SPRITE_HEIGHT // 2
+
+            trajectory_state = {
+                "last_frame_time": time.time(),
+                "distance_traveled_px": 0,
+                "percentage_traveled": 0,
+                "start_x": start_x,
+                "start_y": start_y,
+                "center_offset_x": center_offset_x,
+                "center_offset_y": center_offset_y,
+                "hit_direction": hit_direction,
+                "radius": radius,
+                "speed": 2,
+                "approach_side": None,
+                "attack_frame_played": False
+            }
+            launch_towards_mouse_step(trajectory_state)
+
+        def launch_towards_mouse_step(trajectory_state):
+            screen_width, screen_height = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
+            current_time = time.time()
+            screen_diagonal = math.sqrt(screen_width**2 + screen_height**2)
+
+            euler_step_new = screen_diagonal * (1 / 3 + 2 * (1 - trajectory_state["percentage_traveled"]) / 3 * trajectory_state["speed"]) * (current_time - trajectory_state["last_frame_time"])
+            trajectory_state["distance_traveled_px"] = trajectory_state["distance_traveled_px"] + euler_step_new
+            trajectory_state["last_frame_time"] = current_time
+
+            if trajectory_state["percentage_traveled"] > 0.6 and not trajectory_state["attack_frame_played"]:
+                self.label.setPixmap(self._punch_frames[trajectory_state["hit_direction"] - 1])
+                trajectory_state["attack_frame_played"] = True
+
+            mouse_x, mouse_y = win32api.GetCursorPos()
+            window_target_x, window_target_y = mouse_x + trajectory_state["center_offset_x"], mouse_y + trajectory_state["center_offset_y"]
+            current_x, current_y, reached_target, approach_side, trajectory_state["percentage_traveled"] = MathUtils.calculate_orbit_path_cords(
+                trajectory_state["distance_traveled_px"],
+                trajectory_state["start_x"],
+                trajectory_state["start_y"],
+                window_target_x, window_target_y,
+                trajectory_state["radius"],
+                trajectory_state["hit_direction"] * 90,
+                trajectory_state["approach_side"],
+            )
+            trajectory_state["approach_side"] = approach_side
+            self.window.move(int(current_x), int(current_y))
+
+            if not reached_target:
+                self._single_shot(16, lambda: launch_towards_mouse_step(trajectory_state))
+            else:
+                if trajectory_state["hit_direction"] == 1:
+                    end_x, end_y = mouse_x, 0
+                elif trajectory_state["hit_direction"] == 2:
+                    end_x, end_y = screen_width, mouse_y
+                elif trajectory_state["hit_direction"] == 3:
+                    end_x, end_y = mouse_x, screen_height
+                else:
+                    end_x, end_y = 0, mouse_y
+                CombatSystem.damage(self, "sans_mouse_attack_initial_hit")
+                self._blocker_listener = mouse.Listener(on_move=lambda: None, suppress=True)  # Block mouse movement while it is being flung around the screen
+                self._blocker_listener.start()
+                WindowsUtils.move_mouse_via_singleshot(
+                    lambda delay_ms,
+                    callback: self._single_shot(delay_ms, callback),
+                    mouse_x, mouse_y,
+                    end_x, end_y,
+                    trajectory_state["speed"],
+                    on_complete=stop_blocker_listener
+                )
+                initialize_side_of_screen_sweep(
+                    screen_diagonal * trajectory_state["speed"] * 2 / 3,
+                    trajectory_state["hit_direction"],
+                    QPointF(window_target_x, window_target_y),
+                    QPointF(trajectory_state["center_offset_x"], trajectory_state["center_offset_y"])
+                )
+
+        def initialize_side_of_screen_sweep(initial_speed, sweep_side, impact_pos, offsets):
+            """Initialize the Sans-like side sweep:
+               - Continue from impact position.
+               - Curve to nearest corner on the wall the mouse was flung into.
+               - Then sweep along that wall using the MathUtils side-sweep geometry."""
+
+            self.particles_manager.play_unparryable_indicator(self.window.geometry().x() - offsets.x(), self.window.geometry().y() - offsets.y())
+            self.audio_manager.play("unparryable_attack", volume=self.sound_volume)
+
+            screen_w, screen_h = win32api.GetSystemMetrics(0), win32api.GetSystemMetrics(1)
+            mouse_x, mouse_y = win32api.GetCursorPos()
+
+            half_sprite_h = self.SPRITE_HEIGHT // 2
+            half_sprite_w = self.SPRITE_WIDTH // 2
+
+            # find which wall and corner to base the sweep off of from sweep side
+            if sweep_side == 1:  # top
+                wall_y = half_sprite_h
+                # furthest corner
+                corner_x = half_sprite_w if mouse_x > screen_w / 2 else screen_w - half_sprite_w
+                corner_y = wall_y
+                end_x = screen_w - half_sprite_w if corner_x == half_sprite_w else half_sprite_w
+                end_y = wall_y
+            elif sweep_side == 3:  # bottom
+                wall_y = screen_h - half_sprite_h
+                corner_x = half_sprite_w if mouse_x > screen_w / 2 else screen_w - half_sprite_w
+                corner_y = wall_y
+                end_x = screen_w - half_sprite_w if corner_x == half_sprite_w else half_sprite_w
+                end_y = wall_y
+            elif sweep_side == 2:  # right
+                wall_x = screen_w - half_sprite_w
+                corner_x = wall_x
+                corner_y = half_sprite_h if mouse_y > screen_h / 2 else screen_h - half_sprite_h
+                end_x = wall_x
+                end_y = screen_h - half_sprite_h if corner_y == half_sprite_h else half_sprite_h
+            else:  # left
+                wall_x = half_sprite_w
+                corner_x = wall_x
+                corner_y = half_sprite_h if mouse_y > screen_h / 2 else screen_h - half_sprite_h
+                end_x = wall_x
+                end_y = screen_h - half_sprite_h if corner_y == half_sprite_h else half_sprite_h
+
+            a = impact_pos
+            b = QPointF(corner_x, corner_y) + offsets
+            c = QPointF(end_x, end_y) + offsets
+            # Compute side-sweep geometry with linear accel segment + corner + straight
+            geo = MathUtils.compute_side_sweep_geometry_and_durations(
+                a,
+                b,
+                c,
+                speed_a=initial_speed,
+                angle_deg=sweep_side * 90 - 180,
+                speed_b=initial_speed * 1.2,
+                radius=self.WINDOW_SIZE_Y * 0.6,
+            )
+            self.warning_manager.trigger_warning(
+                abs(end_x - corner_x) + self.SPRITE_WIDTH,
+                abs(end_y - corner_y) + self.SPRITE_HEIGHT,
+                1,
+                min(corner_x, end_x) - half_sprite_w,
+                min(corner_y, end_y) - half_sprite_h,
+                shape="rect",
+                on_complete=lambda: None
+            )
+
+            if corner_x == end_x:
+                attack_direction = 1 if corner_y > end_y else 3
+            elif corner_y == end_y:
+                attack_direction = 4 if corner_x > end_x else 2
+
+            side_sweep_state = {
+                "geo": geo,
+                "t": 0.0,
+                "start_time": time.time(),
+                "hit_db": False,
+                "blur_frame_played": False,
+                "attack_frame_played": False,
+                "attack_direction": attack_direction
+            }
+
+            def side_sweep_step():
+                now = time.time()
+                elapsed = now - side_sweep_state["start_time"]
+                pt, total_duration = MathUtils.get_side_sweep_path_position(elapsed, side_sweep_state["geo"])
+
+                self.window.move(int(pt.x()), int(pt.y()))
+
+                if not side_sweep_state["hit_db"] and not self._blocker_listener:
+                    mouse_x2, mouse_y2 = win32api.GetCursorPos()
+                    geom = self.window.geometry()
+                    sx, sy = geom.x() - offsets.x(), geom.y() - offsets.y()
+                    if sx - half_sprite_w <= mouse_x2 <= sx + half_sprite_w and sy - half_sprite_h <= mouse_y2 <= sy + half_sprite_h:
+                        side_sweep_state["hit_db"] = True
+                        CombatSystem.damage(self, "sans_mouse_attack_side_sweep")
+
+                if elapsed > side_sweep_state["geo"]["duration_1"] * 0.5 and not side_sweep_state["blur_frame_played"]:
+                    self.label.setPixmap(self._blurred_movement_frame)
+                    side_sweep_state["blur_frame_played"] = True
+
+                if elapsed > side_sweep_state["geo"]["duration_1"] + side_sweep_state["geo"]["duration_2"] and not side_sweep_state["attack_frame_played"]:
+                    self.label.setPixmap(self._punch_frames[side_sweep_state["attack_direction"] - 1])
+                    print(side_sweep_state["attack_direction"])
+                    side_sweep_state["attack_frame_played"] = True
+
+                if elapsed < total_duration:
+                    self._single_shot(16, side_sweep_step)
+                else:
+                    self.sweeps_remaining -= 1
+                    if self.sweeps_remaining > 0:
+                        self.label.setPixmap(self.qpixmaps["idle1"] if self.current_facing  == "Right" else self.qpixmaps["idle1"].transformed(self.horizontal_flip))
+                        self._single_shot(self.ANIMATION_DELAY, initialize_launch_towards_mouse)
+                    else:
+                        cleanup_sans_mouse_attack()
+                        if self.window.geometry().y() < screen_h // 2:
+                            CombatSystem.jump(
+                                self,
+                                [random.randint(self.WINDOW_SIZE_X, screen_x - self.WINDOW_SIZE_X), WindowsUtils.get_work_area_height() - self.WINDOW_SIZE_Y],
+                                0.4,
+                                on_complete=lambda: (on_complete(), self.screen_shaker.shake(duration_ms=1500, intensity=135))
+                            )
+                        else:
+                            self._single_shot(0, on_complete)
+
+            side_sweep_step()
+
+        def cleanup_sans_mouse_attack():
+            """Releases the temporary blocker listener and images created for this attack."""
+
+            stop_blocker_listener()
+
+            self._punch_frames.clear()
+            self._punch_frames = None
+
+            del self._blurred_movement_frame
+            self._blurred_movement_frame = None
+
+            del self._uppercut_frame
+            self._uppercut_frame = None
+
+            del self._punch_right_frame
+            self._punch_right_frame = None
+
+            del self._downwards_slam_frame
+            self._downwards_slam_frame = None
+
+            del self._punch_left_frame
+            self._punch_left_frame = None
+
+            self.sweeps_remaining = None
+
+        def stop_blocker_listener():
+            if hasattr(self, "_blocker_listener") and self._blocker_listener and self._blocker_listener.running:
+                self._blocker_listener.stop()
+            self._blocker_listener = None
+
+        self.fight_img_cleanup_func = cleanup_sans_mouse_attack
+        shake_step(time_counter=0, intensity=200)
+
     def taskbar_asgore_attack(self, num_attacks=4, on_complete=None):
+        """Do an attack where the taskbar flies into destroyman's hands and he swings it at you with smear frames similarly to how asgore does in undertale.
+        Done by first screenshotting the taskbar and putting it on a taskbar window widget, making the original invisible
+        , moving it into destroyman's hands using a bezier curve, and then having a swing anim with smear frames for the taskbar."""
 
         self._standing_frame = QPixmap(os.path.join(self.IMAGES_PATH, "forwards_standing.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "forwards_standing.png")).transformed(self.horizontal_flip)
         self._hands_frame = QPixmap(os.path.join(self.IMAGES_PATH, "hands.png"))
@@ -1087,8 +1399,159 @@ class CombatSystem():
 
             WindowsUtils.toggle_taskbar_visibility(True)
 
-        self.fight_img_cleanup_func = cleanup_asgore_attack
+        self.fight_mode_cleanup_function = cleanup_asgore_attack
         start_bezier_trajectory(start_x, start_y, 1)
+
+    def area_inflate_attack(self, puff_scale=3, warning_duration=1000, on_complete=None):
+        self.puffed_up_image = QPixmap(os.path.join(self.IMAGES_PATH, "puffed_up.png")) if self.current_facing  == "Right" else QPixmap(os.path.join(self.IMAGES_PATH, "puffed_up.png")).transformed(self.horizontal_flip)
+        screen_w = windll.user32.GetSystemMetrics(0)
+        screen_h = windll.user32.GetSystemMetrics(1)
+
+        center_offset_x = self.WINDOW_SIZE_X - self.SPRITE_WIDTH // 2 if self.current_facing == "Right" else self.SPRITE_WIDTH // 2
+        puff_max_size =  max(self.window.geometry().x() + center_offset_x, screen_w - (self.window.geometry().x() + center_offset_x)) // (self.SPRITE_WIDTH // 2)
+        puff_scale = min(puff_scale, puff_max_size)
+        print(puff_max_size, puff_scale, self.window.geometry().x() + center_offset_x, screen_w - (self.window.geometry().x() + center_offset_x))
+
+        class InflatingPixmapWidget(QWidget):
+            def __init__(self, pixmap, original_size, max_size, center_pos, offset, damage_callback, on_complete=None):
+                super().__init__(None)
+
+                self.pos_offset = offset
+
+                self.damage_callback = damage_callback
+
+                self.source_pixmap = pixmap
+                self.original_size = original_size
+                self.max_size = max_size
+                self.center_pos = center_pos
+
+                self._scale = 1.0
+                self.hit_db = False
+
+                self.setWindowFlags(
+                    Qt.WindowType.FramelessWindowHint |
+                    Qt.WindowType.WindowStaysOnTopHint |
+                    Qt.WindowType.SubWindow
+                )
+                self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+                self.setGeometry(0, 0, screen_w, screen_h - 1)
+
+                # inflation
+                self.inflate_anim = QPropertyAnimation(self, b"scale")
+                self.inflate_anim.setDuration(500)
+                self.inflate_anim.setStartValue(1.0)
+                self.inflate_anim.setEndValue(max_size / original_size)
+                self.inflate_anim.setEasingCurve(QEasingCurve.Type.OutQuad)
+
+                # deflation
+                self.deflate_anim = QPropertyAnimation(self, b"scale")
+                self.deflate_anim.setDuration(500)
+                self.deflate_anim.setStartValue(max_size / original_size)
+                self.deflate_anim.setEndValue(1.0)
+                self.deflate_anim.setEasingCurve(QEasingCurve.Type.InQuad)
+
+                self.animation_group = QSequentialAnimationGroup(self)
+                self.animation_group.addAnimation(self.inflate_anim)
+                self.animation_group.addAnimation(self.deflate_anim)
+
+                if on_complete:
+                    self.animation_group.finished.connect(on_complete)
+
+                self.animation_group.start()
+                self.show()
+
+            @pyqtProperty(float)
+            def scale(self):
+                return self._scale
+
+            @scale.setter
+            def scale(self, value):
+                self._scale = value
+
+                mouse_x, mouse_y = win32api.GetCursorPos()
+                if not self.hit_db and self.is_point_inside_radius(mouse_x, mouse_y):
+                    self.damage_callback()
+                    self.hit_db = True
+                self.update()
+
+            def get_current_radius(self):
+                current_width = self.original_size * self._scale
+                return current_width / 2.0
+
+            def is_point_inside_radius(self, target_point_x, target_point_y):
+                dx = abs(target_point_x - self.center_pos.x())
+                dy = abs(target_point_y - self.center_pos.y())
+                distance = math.hypot(dx, dy)
+                return distance <= self.get_current_radius()
+
+            def paintEvent(self, event):
+                painter = QPainter(self)
+
+                painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceOver)
+
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+                current_width = self.original_size * self._scale + self.pos_offset.x() * self._scale * 2
+                current_height = self.original_size * self._scale + self.pos_offset.y() * self._scale * 2
+
+                top_left_x = self.center_pos.x() - (current_width / 2.0)
+                top_left_y = self.center_pos.y() - (current_height / 2.0)
+
+                target_rect = QRectF(top_left_x, top_left_y, current_width, current_height)
+                painter.drawPixmap(target_rect, self.source_pixmap, QRectF(self.source_pixmap.rect()))
+
+            def deinitialize(self):
+                if hasattr(self, 'animation_group') and self.animation_group is not None:
+                    if self.animation_group.state() == QSequentialAnimationGroup.State.Running:
+                        self.animation_group.stop()
+                    try:
+                        self.animation_group.finished.disconnect()
+                    except TypeError:
+                        pass
+                    self.animation_group.deleteLater()
+                    self.animation_group = None
+
+                self.source_pixmap = QPixmap()
+                self.deleteLater()
+
+        def initiate_warning():
+            self.audio_manager.play("unparryable_attack", volume=self.sound_volume)
+            center_offset_y = self.WINDOW_SIZE_Y - self.SPRITE_HEIGHT // 2
+
+            geom = self.window.geometry()
+            center_x, center_y = geom.x() + center_offset_x, geom.y() + center_offset_y
+            self.warning_manager.trigger_circular_warning(center_x, center_y, self.SPRITE_WIDTH // 2 * puff_scale, warning_duration, on_complete=lambda: inflation_sequence(center_x, center_y))
+
+        def inflation_sequence(center_x, center_y):
+            self.inflation_widget = InflatingPixmapWidget(
+                pixmap=self.puffed_up_image,
+                original_size=self.SPRITE_WIDTH,
+                max_size=self.SPRITE_WIDTH * puff_scale,
+                center_pos=QPoint(center_x, center_y),
+                offset=QPoint(
+                    int((self.SPRITE_WIDTH / self.PUFFED_UP_SPRITE_SIZE_X) * (self.puffed_up_image.width() - self.PUFFED_UP_SPRITE_SIZE_X) // 2),
+                    int((self.SPRITE_HEIGHT / self.PUFFED_UP_SPRITE_SIZE_Y) * (self.puffed_up_image.height() - self.PUFFED_UP_SPRITE_SIZE_Y) // 2)
+                ),
+                damage_callback=lambda: CombatSystem.damage(self, "area_inflate_attack"),
+                on_complete=cleanup_area_inflate_attack
+            )
+            self.inflation_widget.show()
+
+        def cleanup_area_inflate_attack():
+            """Releases the temporary state created for this attack."""
+            if self.inflation_widget:
+                self.inflation_widget.deinitialize()
+                self.inflation_widget = None
+
+            del self.puffed_up_image
+            self.puffed_up_image = None
+
+            if on_complete:
+                on_complete()
+
+        initiate_warning()
 
     def summon_sword(self):
         """Creates a sword window if not already present."""
